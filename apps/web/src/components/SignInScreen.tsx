@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { GITHUB_SIGN_IN_URL, getAuthConfig } from "../api/auth.js";
+import { BRAND } from "../brand.js";
+import { LogoMark } from "./brand/Logo.js";
+import { GitHubIcon } from "./icons.js";
 
 /** Messages for the `?authError=` codes the API redirects back with. */
 const AUTH_ERRORS: Record<string, string> = {
   github_denied: "GitHub sign-in was cancelled.",
-  invalid_state: "Sign-in link expired or was tampered with. Please try again.",
+  invalid_state: "That sign-in link expired. Please try again.",
   signin_failed: "GitHub sign-in failed. Check the API logs for details."
 };
 
@@ -19,24 +22,32 @@ export function SignInScreen() {
   }, []);
 
   return (
-    <main className="app">
-      <section className="panel sign-in">
-        <h1>Launchpad</h1>
-        <p className="muted">Sign in to manage your team's projects.</p>
+    <main className="sign-in">
+      <section className="sign-in__card">
+        <LogoMark size={56} className="sign-in__mark" title={BRAND.name} />
+        <h1>Welcome to {BRAND.name}</h1>
+        <p>{BRAND.tagline}</p>
 
-        {authError && <p className="error">{authError}</p>}
+        {authError && <div className="banner">{authError}</div>}
 
         {githubConfigured === false ? (
-          <p className="error">
-            GitHub sign-in isn't configured yet. Set <code>GITHUB_CLIENT_ID</code> and{" "}
-            <code>GITHUB_CLIENT_SECRET</code> in <code>.env</code> and restart the API.
-          </p>
+          <div className="banner">
+            GitHub sign-in isn't configured. Set <code>GITHUB_CLIENT_ID</code> and{" "}
+            <code>GITHUB_CLIENT_SECRET</code> in <code>.env</code>, then restart the API.
+          </div>
         ) : (
           // A plain link, not fetch: the browser has to navigate to GitHub.
-          <a className="button" href={GITHUB_SIGN_IN_URL} aria-disabled={githubConfigured === null}>
-            Sign in with GitHub
+          <a
+            className="button button--lg"
+            href={GITHUB_SIGN_IN_URL}
+            aria-disabled={githubConfigured === null}
+          >
+            <GitHubIcon size={18} />
+            Continue with GitHub
           </a>
         )}
+
+        <p className="sign-in__footnote">Self-hosted. Your code and credentials stay on your infrastructure.</p>
       </section>
     </main>
   );

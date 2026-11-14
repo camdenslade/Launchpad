@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { CreateProjectSchema, type Project } from "@launchpad/contracts";
 import { createProject } from "../api/projects.js";
 import { ApiError } from "../api/client.js";
@@ -6,6 +6,7 @@ import { ApiError } from "../api/client.js";
 interface RegisterProjectFormProps {
   /** Called with the saved project so the parent can add it to its list. */
   onCreated: (project: Project) => void;
+  onCancel: () => void;
 }
 
 const EMPTY_FORM = { name: "", repositoryUrl: "", owner: "", description: "" };
@@ -18,12 +19,11 @@ type FieldErrors = Partial<Record<keyof FormValues | "", string>>;
  * each keystroke updates it via `onChange`. React re-renders on each change,
  * so what's on screen always matches state.
  */
-export function RegisterProjectForm({ onCreated }: RegisterProjectFormProps) {
+export function RegisterProjectForm({ onCreated, onCancel }: RegisterProjectFormProps) {
   const [values, setValues] = useState<FormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
 
-  // One change handler for every input, keyed by the input's `name` attribute.
   function handleChange(field: keyof FormValues, value: string) {
     setValues((previous) => ({ ...previous, [field]: value }));
   }
@@ -70,53 +70,76 @@ export function RegisterProjectForm({ onCreated }: RegisterProjectFormProps) {
   }
 
   return (
-    <form className="register-form" onSubmit={handleSubmit} noValidate>
-      <Field label="Name" error={errors.name}>
-        <input
-          value={values.name}
-          onChange={(e) => handleChange("name", e.target.value)}
-          placeholder="payments-service"
-        />
-      </Field>
-      <Field label="Repository URL" error={errors.repositoryUrl}>
-        <input
-          type="url"
-          value={values.repositoryUrl}
-          onChange={(e) => handleChange("repositoryUrl", e.target.value)}
-          placeholder="https://github.com/acme/payments-service"
-        />
-      </Field>
-      <Field label="Owner (optional)" error={errors.owner}>
-        <input
-          value={values.owner}
-          onChange={(e) => handleChange("owner", e.target.value)}
-          placeholder="platform-team"
-        />
-      </Field>
-      <Field label="Description (optional)" error={errors.description}>
-        <textarea
-          rows={2}
-          value={values.description}
-          onChange={(e) => handleChange("description", e.target.value)}
-        />
-      </Field>
+    <form onSubmit={handleSubmit} noValidate>
+      <div className="form-grid">
+        <Field label="Name" error={errors.name}>
+          <input
+            autoFocus
+            value={values.name}
+            onChange={(e) => handleChange("name", e.target.value)}
+            placeholder="payments-service"
+          />
+        </Field>
+        <Field label="Repository URL" error={errors.repositoryUrl}>
+          <input
+            type="url"
+            value={values.repositoryUrl}
+            onChange={(e) => handleChange("repositoryUrl", e.target.value)}
+            placeholder="https://github.com/acme/payments-service"
+          />
+        </Field>
+        <Field label="Owner" optional error={errors.owner}>
+          <input
+            value={values.owner}
+            onChange={(e) => handleChange("owner", e.target.value)}
+            placeholder="platform-team"
+          />
+        </Field>
+        <Field label="Description" optional error={errors.description} full>
+          <textarea
+            rows={2}
+            value={values.description}
+            onChange={(e) => handleChange("description", e.target.value)}
+            placeholder="What does this service do?"
+          />
+        </Field>
+      </div>
 
-      {errors[""] && <p className="error">{errors[""]}</p>}
-
-      <button type="submit" className="button" disabled={submitting}>
-        {submitting ? "Registering…" : "Register project"}
-      </button>
+      <div className="form-actions">
+        {errors[""] && <p className="error">{errors[""]}</p>}
+        <button type="button" className="button button--secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="button" disabled={submitting}>
+          {submitting ? "Registering…" : "Register project"}
+        </button>
+      </div>
     </form>
   );
 }
 
+interface FieldProps {
+  label: string;
+  error?: string | undefined;
+  optional?: boolean;
+  /** Span both columns of the form grid. */
+  full?: boolean;
+  children: ReactNode;
+}
+
 /** Label + input + error message. `children` is whatever is nested inside. */
-function Field(props: { label: string; error?: string | undefined; children: React.ReactNode }) {
+function Field({ label, error, optional, full, children }: FieldProps) {
+  const className = ["field", full && "field--full", error && "field--invalid"]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <label className="field">
-      <span>{props.label}</span>
-      {props.children}
-      {props.error && <span className="error">{props.error}</span>}
+    <label className={className}>
+      <span>
+        {label} {optional && <span className="field__optional">(optional)</span>}
+      </span>
+      {children}
+      {error && <span className="error">{error}</span>}
     </label>
   );
 }
