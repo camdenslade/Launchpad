@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import type { PrismaClient } from "@launchpad/database";
 import { InjectDatabase } from "../database/database.module.js";
+import { Public } from "../auth/auth.decorators.js";
 
 interface HealthResponse {
   status: "ok";
@@ -18,6 +19,8 @@ interface ReadinessResponse extends HealthResponse {
 
 const SERVICE_NAME = "launchpad-api";
 
+/** Health checks must stay reachable without signing in (load balancers, Docker). */
+@Public()
 @Controller("health")
 export class HealthController {
   constructor(@InjectDatabase() private readonly db: PrismaClient) {}

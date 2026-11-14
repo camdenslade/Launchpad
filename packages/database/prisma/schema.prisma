@@ -19,3 +19,42 @@ model Project {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+/// A person who signs in to Launchpad (currently always via GitHub).
+model User {
+  id               String            @id @default(uuid())
+  /// GitHub's numeric user id: stable even if the user renames their login.
+  githubId         BigInt            @unique
+  login            String
+  name             String?
+  avatarUrl        String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         Session[]
+  githubCredential GitHubCredential?
+}
+
+/// A signed-in browser session. The cookie holds a random token; only its
+/// SHA-256 hash is stored, so a database leak does not leak live sessions.
+model Session {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// GitHub user-to-server tokens, encrypted at rest (AES-256-GCM, ENCRYPTION_KEY).
+model GitHubCredential {
+  userId                String    @id
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessTokenEncrypted  String
+  accessTokenExpiresAt  DateTime?
+  refreshTokenEncrypted String?
+  refreshTokenExpiresAt DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}

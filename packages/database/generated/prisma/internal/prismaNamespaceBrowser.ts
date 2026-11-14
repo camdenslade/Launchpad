@@ -51,7 +51,10 @@ export const AnyNull = runtime.AnyNull
 
 
 export const ModelName = {
-  Project: 'Project'
+  Project: 'Project',
+  User: 'User',
+  Session: 'Session',
+  GitHubCredential: 'GitHubCredential'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -81,6 +84,43 @@ export const ProjectScalarFieldEnum = {
 } as const
 
 export type ProjectScalarFieldEnum = (typeof ProjectScalarFieldEnum)[keyof typeof ProjectScalarFieldEnum]
+
+
+export const UserScalarFieldEnum = {
+  id: 'id',
+  githubId: 'githubId',
+  login: 'login',
+  name: 'name',
+  avatarUrl: 'avatarUrl',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
+
+
+export const SessionScalarFieldEnum = {
+  id: 'id',
+  tokenHash: 'tokenHash',
+  userId: 'userId',
+  expiresAt: 'expiresAt',
+  createdAt: 'createdAt'
+} as const
+
+export type SessionScalarFieldEnum = (typeof SessionScalarFieldEnum)[keyof typeof SessionScalarFieldEnum]
+
+
+export const GitHubCredentialScalarFieldEnum = {
+  userId: 'userId',
+  accessTokenEncrypted: 'accessTokenEncrypted',
+  accessTokenExpiresAt: 'accessTokenExpiresAt',
+  refreshTokenEncrypted: 'refreshTokenEncrypted',
+  refreshTokenExpiresAt: 'refreshTokenExpiresAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type GitHubCredentialScalarFieldEnum = (typeof GitHubCredentialScalarFieldEnum)[keyof typeof GitHubCredentialScalarFieldEnum]
 
 
 export const SortOrder = {

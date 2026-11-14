@@ -26,4 +26,9 @@ export function createDatabaseClient(
 }
 
 export { PrismaClient, Prisma } from "../generated/prisma/client.js";
-export type { Project } from "../generated/prisma/client.js";
+export type {
+  GitHubCredential,
+  Project,
+  Session,
+  User
+} from "../generated/prisma/client.js";

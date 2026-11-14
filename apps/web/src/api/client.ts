@@ -6,6 +6,9 @@
  * function (see projects.ts) is a one-liner.
  */
 
+/** Fired on `window` whenever the API answers 401. App.tsx listens for it. */
+export const UNAUTHORIZED_EVENT = "launchpad:unauthorized";
+
 /** One field-level problem, as returned by the API's ZodValidationPipe. */
 export interface ValidationIssue {
   path: string;
@@ -47,6 +50,10 @@ export async function request<T>(
     response.status === 204 ? undefined : await response.json().catch(() => undefined);
 
   if (!response.ok) {
+    // Session missing/expired: tell the app to show the sign-in screen.
+    if (response.status === 401) {
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    }
     throw toApiError(response.status, body);
   }
 

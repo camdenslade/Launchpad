@@ -3,3 +3,4 @@
  * (typed requests/responses). Keep these free of server-only imports.
  */
 export * from "./projects.js";
+export * from "./auth.js";

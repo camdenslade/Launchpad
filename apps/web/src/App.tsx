@@ -1,78 +1,63 @@
 import { useEffect, useState } from "react";
-import type { Project } from "@launchpad/contracts";
-import { deleteProject, listProjects } from "./api/projects.js";
-import { ProjectList } from "./components/ProjectList.js";
-import { RegisterProjectForm } from "./components/RegisterProjectForm.js";
+import type { CurrentUser } from "@launchpad/contracts";
+import { getCurrentUser, signOut } from "./api/auth.js";
+import { UNAUTHORIZED_EVENT } from "./api/client.js";
+import { Dashboard } from "./components/Dashboard.js";
+import { SignInScreen } from "./components/SignInScreen.js";
 import "./styles.css";
 
+/** `undefined` = still checking, `null` = signed out. */
+type AuthState = CurrentUser | null | undefined;
+
 /**
- * App owns the project list state and passes it down. Child components get
- * data through props and report changes through callbacks (`onCreated`,
- * `onDelete`). That "state lives in the parent" pattern is most of React.
+ * Top level: decides between the sign-in screen and the dashboard.
+ * The session lives in an httpOnly cookie the page can't read, so we ask
+ * the API (`/auth/me`) who we are.
  */
 function App() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthState>(undefined);
 
-  // Runs once after the first render (empty dependency array `[]`).
-  // The callback can't be async itself, so we define and call an async fn.
   useEffect(() => {
-    let cancelled = false; // ignore the result if the component unmounted
+    getCurrentUser()
+      .then(setUser)
+      .catch(() => setUser(null));
 
-    async function load() {
-      try {
-        const result = await listProjects();
-        if (!cancelled) setProjects(result);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load projects");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
+    // Any API call that returns 401 (e.g. session expired) signs us out.
+    const handleUnauthorized = () => setUser(null);
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
   }, []);
 
-  function handleCreated(project: Project) {
-    // Prepend instead of refetching: newest first, matching the API's order.
-    setProjects((current) => [project, ...current]);
+  async function handleSignOut() {
+    await signOut().catch(() => undefined);
+    setUser(null);
   }
 
-  async function handleDelete(project: Project) {
-    if (!window.confirm(`Remove "${project.name}" from Launchpad?`)) return;
-    try {
-      await deleteProject(project.id);
-      setProjects((current) => current.filter((p) => p.id !== project.id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove project");
-    }
+  if (user === undefined) {
+    return <main className="app muted">Loading…</main>;
+  }
+
+  if (user === null) {
+    return <SignInScreen />;
   }
 
   return (
     <main className="app">
       <header className="app__header">
-        <h1>Launchpad</h1>
-        <p className="muted">Developer platform</p>
+        <div>
+          <h1>Launchpad</h1>
+          <p className="muted">Developer platform</p>
+        </div>
+        <div className="user-menu">
+          {user.avatarUrl && <img src={user.avatarUrl} alt="" width={28} height={28} />}
+          <span>{user.name ?? user.login}</span>
+          <button type="button" className="button button--quiet" onClick={handleSignOut}>
+            Sign out
+          </button>
+        </div>
       </header>
 
-      <section className="panel">
-        <h2>Register a project</h2>
-        <RegisterProjectForm onCreated={handleCreated} />
-      </section>
-
-      <section className="panel">
-        <h2>Projects</h2>
-        {error && <p className="error">{error}</p>}
-        {loading ? (
-          <p className="muted">Loading…</p>
-        ) : (
-          <ProjectList projects={projects} onDelete={handleDelete} />
-        )}
-      </section>
+      <Dashboard />
     </main>
   );
 }

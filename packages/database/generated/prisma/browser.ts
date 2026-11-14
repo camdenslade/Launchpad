@@ -22,3 +22,19 @@ export * from './enums.js';
  * 
  */
 export type Project = Prisma.ProjectModel
+/**
+ * Model User
+ * A person who signs in to Launchpad (currently always via GitHub).
+ */
+export type User = Prisma.UserModel
+/**
+ * Model Session
+ * A signed-in browser session. The cookie holds a random token; only its
+ * SHA-256 hash is stored, so a database leak does not leak live sessions.
+ */
+export type Session = Prisma.SessionModel
+/**
+ * Model GitHubCredential
+ * GitHub user-to-server tokens, encrypted at rest (AES-256-GCM, ENCRYPTION_KEY).
+ */
+export type GitHubCredential = Prisma.GitHubCredentialModel
