@@ -15,6 +15,6 @@ import { SessionGuard } from "./session.guard.js";
     // Applies SessionGuard to every route in the app.
     { provide: APP_GUARD, useClass: SessionGuard }
   ],
-  exports: [AuthService, EncryptionService]
+  exports: [AuthService, EncryptionService, GitHubOAuthClient]
 })
 export class AuthModule {}

@@ -20,7 +20,9 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    readonly issues: ValidationIssue[] = []
+    readonly issues: ValidationIssue[] = [],
+    /** Machine-readable error code, when the API sends one. */
+    readonly code: string | null = null
   ) {
     super(message);
     this.name = "ApiError";
@@ -65,10 +67,11 @@ function toApiError(status: number, body: unknown): ApiError {
   const data = (body ?? {}) as {
     message?: string | string[];
     issues?: ValidationIssue[];
+    code?: string;
   };
   const message = Array.isArray(data.message)
     ? data.message.join(", ")
     : (data.message ?? `Request failed with status ${status}`);
 
-  return new ApiError(status, message, data.issues ?? []);
+  return new ApiError(status, message, data.issues ?? [], data.code ?? null);
 }

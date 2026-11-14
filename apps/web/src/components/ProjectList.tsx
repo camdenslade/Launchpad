@@ -1,5 +1,6 @@
 import type { Project } from "@launchpad/contracts";
-import { GitHubIcon } from "./icons.js";
+import { BranchIcon, GitHubIcon } from "./icons.js";
+import { LanguageBadge, ProjectAvatar } from "./ProjectAvatar.js";
 
 interface ProjectListProps {
   projects: Project[];
@@ -17,9 +18,7 @@ export function ProjectList({ projects, onDelete }: ProjectListProps) {
       {/* `key` lets React track each row between renders; use a stable id. */}
       {projects.map((project) => (
         <li key={project.id} className="project-row">
-          <div className="project-row__icon" aria-hidden="true">
-            {project.name.charAt(0).toUpperCase()}
-          </div>
+          <ProjectAvatar name={project.name} avatarUrl={project.avatarUrl} />
 
           <div style={{ minWidth: 0 }}>
             <h3 className="project-row__name">{project.name}</h3>
@@ -31,6 +30,13 @@ export function ProjectList({ projects, onDelete }: ProjectListProps) {
                 <GitHubIcon size={13} />
                 <span>{shortRepo(project.repositoryUrl)}</span>
               </a>
+              {project.language && <LanguageBadge language={project.language} />}
+              {project.defaultBranch && (
+                <span className="meta-item" title="Default branch">
+                  <BranchIcon />
+                  {project.defaultBranch}
+                </span>
+              )}
               {project.owner && <span className="tag">{project.owner}</span>}
               <span>Added {formatDate(project.createdAt)}</span>
             </div>

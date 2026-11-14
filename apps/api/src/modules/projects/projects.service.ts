@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import type {
   CreateProject,
+  ImportProject,
   UpdateProject
 } from "@launchpad/contracts";
 import {
@@ -13,6 +14,7 @@ import {
   type Project
 } from "@launchpad/database";
 import { InjectDatabase } from "../database/database.module.js";
+import { SourceControlService } from "../source-control/source-control.service.js";
 
 /**
  * Business logic for the project catalog. Controllers stay thin (HTTP in,
@@ -20,7 +22,10 @@ import { InjectDatabase } from "../database/database.module.js";
  */
 @Injectable()
 export class ProjectsService {
-  constructor(@InjectDatabase() private readonly db: PrismaClient) {}
+  constructor(
+    @InjectDatabase() private readonly db: PrismaClient,
+    private readonly sourceControl: SourceControlService
+  ) {}
 
   findAll(): Promise<Project[]> {
     return this.db.project.findMany({ orderBy: { createdAt: "desc" } });
@@ -48,6 +53,33 @@ export class ProjectsService {
       });
     } catch (error) {
       throw this.translateError(error, input.repositoryUrl);
+    }
+  }
+
+  /**
+   * Registers a repository from a source provider. Name/URL/description come
+   * from the provider (server-side), not the browser, so they can't be forged
+   * and the user must actually have access to the repository.
+   */
+  async importFromSource(userId: string, input: ImportProject): Promise<Project> {
+    const repo = await this.sourceControl.getRepository(userId, input.provider, input.repositoryId);
+
+    try {
+      return await this.db.project.create({
+        data: {
+          name: repo.name,
+          description: repo.description,
+          owner: input.owner ?? null,
+          repositoryUrl: repo.url,
+          sourceProvider: repo.provider,
+          sourceRepoId: repo.id,
+          defaultBranch: repo.defaultBranch,
+          avatarUrl: repo.ownerAvatarUrl,
+          language: repo.language
+        }
+      });
+    } catch (error) {
+      throw this.translateError(error, repo.fullName);
     }
   }
 
@@ -83,7 +115,7 @@ export class ProjectsService {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
         return new ConflictException(
-          `A project for ${repositoryUrl ?? "that repository"} already exists`
+          `${repositoryUrl ?? "That repository"} is already registered as a project`
         );
       }
       if (error.code === "P2025") {

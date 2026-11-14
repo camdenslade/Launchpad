@@ -10,14 +10,25 @@ datasource db {
 }
 
 model Project {
-  id            String   @id @default(uuid())
-  name          String
-  description   String?
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
   /// Free-form owner label (team or person) until users/teams are modelled.
-  owner         String?
-  repositoryUrl String   @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  owner          String?
+  repositoryUrl  String   @unique
+  /// Where the repository lives, e.g. "github". Null for manually registered projects.
+  sourceProvider String?
+  /// The provider's stable repository id (survives renames and transfers).
+  sourceRepoId   String?
+  defaultBranch  String?
+  /// Avatar of the repository owner (user/org) on the provider.
+  avatarUrl      String?
+  /// Primary language as reported by the provider, e.g. "TypeScript".
+  language       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sourceProvider, sourceRepoId])
 }
 
 /// A person who signs in to Launchpad (currently always via GitHub).
@@ -32,6 +43,8 @@ model User {
   updatedAt        DateTime          @updatedAt
   sessions         Session[]
   githubCredential GitHubCredential?
+  cloudAccounts    CloudAccount[]
+  auditEvents      AuditEvent[]
 }
 
 /// A signed-in browser session. The cookie holds a random token; only its
@@ -57,4 +70,83 @@ model GitHubCredential {
   refreshTokenExpiresAt DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+}
+
+enum JobStatus {
+  queued
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+/// Durable background job, executed by the worker. Postgres is the queue:
+/// workers claim rows with FOR UPDATE SKIP LOCKED, so jobs survive restarts
+/// and two workers never run the same job.
+model Job {
+  id          String    @id @default(uuid())
+  /// Handler name, e.g. "terraform.plan".
+  type        String
+  payload     Json      @default("{}")
+  status      JobStatus @default(queued)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  /// Not picked up before this time (used for scheduling and retry backoff).
+  runAt       DateTime  @default(now())
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  result      Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  finishedAt  DateTime?
+
+  @@index([status, runAt])
+}
+
+enum CloudAccountStatus {
+  /// Created; waiting for the customer to create the IAM role.
+  pending
+  connected
+  error
+}
+
+/// A customer-owned cloud account Launchpad may act in. For AWS, Launchpad
+/// assumes  with  per operation; no long-lived
+/// credentials for the account are ever stored.
+model CloudAccount {
+  id             String             @id @default(uuid())
+  provider       String
+  name           String
+  /// Provider account id (12 digits on AWS). Known once verified.
+  accountId      String?
+  roleArn        String?
+  /// Random value the role's trust policy requires (confused-deputy protection).
+  externalId     String             @unique
+  region         String
+  status         CloudAccountStatus @default(pending)
+  lastVerifiedAt DateTime?
+  lastError      String?
+  createdById    String?
+  createdBy      User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([provider, accountId])
+}
+
+/// Append-only record of sensitive operations (who did what, when).
+model AuditEvent {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  /// e.g. "cloud_account.connected"
+  action     String
+  targetType String
+  targetId   String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }

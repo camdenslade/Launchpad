@@ -3,7 +3,8 @@ import type { Project } from "@launchpad/contracts";
 import { deleteProject, listProjects } from "../api/projects.js";
 import { BRAND } from "../brand.js";
 import { LogoMark } from "./brand/Logo.js";
-import { PlusIcon } from "./icons.js";
+import { GitHubIcon, PlusIcon } from "./icons.js";
+import { ImportRepositoryPanel } from "./ImportRepositoryPanel.js";
 import { ProjectList } from "./ProjectList.js";
 import { RegisterProjectForm } from "./RegisterProjectForm.js";
 
@@ -15,7 +16,8 @@ export function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  /** Which "add a project" panel is open, if any. */
+  const [adding, setAdding] = useState<"import" | "manual" | null>(null);
 
   // Runs once after the first render (empty dependency array `[]`).
   // The callback can't be async itself, so we define and call an async fn.
@@ -42,7 +44,12 @@ export function Dashboard() {
   function handleCreated(project: Project) {
     // Prepend instead of refetching: newest first, matching the API's order.
     setProjects((current) => [project, ...current]);
-    setShowForm(false);
+    setAdding(null);
+  }
+
+  function handleImported(project: Project) {
+    // Keep the import panel open so several repositories can be imported.
+    setProjects((current) => [project, ...current]);
   }
 
   async function handleDelete(project: Project) {
@@ -67,25 +74,35 @@ export function Dashboard() {
           </h1>
           <p>Every service your team builds and ships, in one catalog.</p>
         </div>
-        {!showForm && !isEmpty && (
-          <button type="button" className="button" onClick={() => setShowForm(true)}>
-            <PlusIcon />
-            Register project
-          </button>
+        {!adding && !isEmpty && (
+          <div className="page-header__actions">
+            <button type="button" className="button" onClick={() => setAdding("import")}>
+              <GitHubIcon />
+              Import from GitHub
+            </button>
+            <button type="button" className="button button--secondary" onClick={() => setAdding("manual")}>
+              <PlusIcon />
+              Add manually
+            </button>
+          </div>
         )}
       </div>
 
       {error && <div className="banner">{error}</div>}
 
-      {showForm && (
+      {adding === "import" && (
+        <ImportRepositoryPanel onImported={handleImported} onClose={() => setAdding(null)} />
+      )}
+
+      {adding === "manual" && (
         <section className="panel">
           <div className="panel__header">
             <div>
-              <h2>Register a project</h2>
-              <p>Add an existing repository to the catalog.</p>
+              <h2>Add a project manually</h2>
+              <p>For repositories outside GitHub, or before the GitHub App is installed.</p>
             </div>
           </div>
-          <RegisterProjectForm onCreated={handleCreated} onCancel={() => setShowForm(false)} />
+          <RegisterProjectForm onCreated={handleCreated} onCancel={() => setAdding(null)} />
         </section>
       )}
 
@@ -96,15 +113,21 @@ export function Dashboard() {
           <div className="skeleton" />
         </div>
       ) : isEmpty ? (
-        !showForm && (
+        !adding && (
           <div className="empty-state">
             <LogoMark size={44} />
             <h2>Ready for launch</h2>
-            <p>Register your first repository to start tracking its environments and deployments.</p>
-            <button type="button" className="button" onClick={() => setShowForm(true)}>
-              <PlusIcon />
-              Register project
+            <p>Import your first repository to start tracking its environments and deployments.</p>
+            <div className="empty-state__actions">
+              <button type="button" className="button" onClick={() => setAdding("import")}>
+                <GitHubIcon />
+                Import from GitHub
             </button>
+            <button type="button" className="button button--secondary" onClick={() => setAdding("manual")}>
+                <PlusIcon />
+                Add manually
+            </button>
+            </div>
           </div>
         )
       ) : (

@@ -1,8 +1,10 @@
 import { Module } from "@nestjs/common";
+import { SourceControlModule } from "../source-control/source-control.module.js";
 import { ProjectsController } from "./projects.controller.js";
 import { ProjectsService } from "./projects.service.js";
 
 @Module({
+  imports: [SourceControlModule],
   controllers: [ProjectsController],
   providers: [ProjectsService],
   exports: [ProjectsService]

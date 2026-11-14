@@ -12,12 +12,16 @@ import {
 } from "@nestjs/common";
 import {
   CreateProjectSchema,
+  ImportProjectSchema,
   UpdateProjectSchema,
   type CreateProject,
+  type CurrentUser as CurrentUserDto,
+  type ImportProject,
   type UpdateProject
 } from "@launchpad/contracts";
 import type { Project } from "@launchpad/database";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe.js";
+import { CurrentUser } from "../auth/auth.decorators.js";
 import { ProjectsService } from "./projects.service.js";
 
 /**
@@ -25,6 +29,7 @@ import { ProjectsService } from "./projects.service.js";
  *   GET    /api/projects
  *   GET    /api/projects/:id
  *   POST   /api/projects
+ *   POST   /api/projects/import   (from GitHub etc.)
  *   PATCH  /api/projects/:id
  *   DELETE /api/projects/:id
  */
@@ -47,6 +52,14 @@ export class ProjectsController {
     @Body(new ZodValidationPipe(CreateProjectSchema)) body: CreateProject
   ): Promise<Project> {
     return this.projects.create(body);
+  }
+
+  @Post("import")
+  import(
+    @CurrentUser() user: CurrentUserDto,
+    @Body(new ZodValidationPipe(ImportProjectSchema)) body: ImportProject
+  ): Promise<Project> {
+    return this.projects.importFromSource(user.id, body);
   }
 
   @Patch(":id")

@@ -29,7 +29,14 @@ export const EnvSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().positive().default(168),
   /** GitHub App credentials. Optional so the API can boot before setup. */
   GITHUB_CLIENT_ID: optionalString,
-  GITHUB_CLIENT_SECRET: optionalString
+  GITHUB_CLIENT_SECRET: optionalString,
+  /** The app's URL name (github.com/apps/<slug>), used for "install" links. */
+  GITHUB_APP_SLUG: optionalString,
+  /**
+   * Public S3 URL of the access-role CloudFormation template. Enables the
+   * one-click "Launch in AWS" button (AWS only accepts S3-hosted templates).
+   */
+  AWS_CFN_TEMPLATE_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional())
 });
 
 export type Env = z.infer<typeof EnvSchema>;

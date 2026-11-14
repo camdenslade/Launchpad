@@ -4,9 +4,16 @@ import { getCurrentUser, signOut } from "./api/auth.js";
 import { UNAUTHORIZED_EVENT } from "./api/client.js";
 import { BRAND } from "./brand.js";
 import { LogoMark, LogoWide } from "./components/brand/Logo.js";
+import { CloudAccountsPage } from "./components/cloud/CloudAccountsPage.js";
 import { Dashboard } from "./components/Dashboard.js";
+import { linkProps, usePathname } from "./lib/router.js";
 import { SignInScreen } from "./components/SignInScreen.js";
 import "./styles.css";
+
+const NAV = [
+  { path: "/", label: "Projects" },
+  { path: "/cloud", label: "Cloud" }
+];
 
 /** `undefined` = still checking, `null` = signed out. */
 type AuthState = CurrentUser | null | undefined;
@@ -18,6 +25,7 @@ type AuthState = CurrentUser | null | undefined;
  */
 function App() {
   const [user, setUser] = useState<AuthState>(undefined);
+  const pathname = usePathname();
 
   useEffect(() => {
     getCurrentUser()
@@ -51,9 +59,23 @@ function App() {
     <>
       <header className="topbar">
         <div className="topbar__inner">
-          <a href="/" className="topbar__home" aria-label={`${BRAND.name} home`}>
-            <LogoWide size={20} />
-          </a>
+          <div className="topbar__left">
+            <a {...linkProps("/")} className="topbar__home" aria-label={`${BRAND.name} home`}>
+              <LogoWide size={20} />
+            </a>
+            <nav className="topbar__nav" aria-label="Main">
+              {NAV.map((item) => (
+                <a
+                  key={item.path}
+                  {...linkProps(item.path)}
+                  className={`nav-link${pathname === item.path ? " nav-link--active" : ""}`}
+                  aria-current={pathname === item.path ? "page" : undefined}
+                >
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+          </div>
           <div className="user-menu">
             {user.avatarUrl && <img className="user-menu__avatar" src={user.avatarUrl} alt="" />}
             <span className="user-menu__name">{user.name ?? user.login}</span>
@@ -65,7 +87,7 @@ function App() {
       </header>
 
       <main className="page">
-        <Dashboard />
+        {pathname === "/cloud" ? <CloudAccountsPage /> : <Dashboard />}
       </main>
     </>
   );

@@ -4,3 +4,6 @@
  */
 export * from "./projects.js";
 export * from "./auth.js";
+export * from "./source-control.js";
+export * from "./jobs.js";
+export * from "./cloud.js";

@@ -12,6 +12,14 @@ export const ProjectSchema = z.object({
   description: description.nullable(),
   owner: owner.nullable(),
   repositoryUrl,
+  /** e.g. "github"; null when registered manually. */
+  sourceProvider: z.string().nullable(),
+  sourceRepoId: z.string().nullable(),
+  defaultBranch: z.string().nullable(),
+  /** Repository owner's avatar on the provider. */
+  avatarUrl: z.url().nullable(),
+  /** Primary language, e.g. "TypeScript". */
+  language: z.string().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime()
 });

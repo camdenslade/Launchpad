@@ -12,6 +12,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@aws-sdk/client-sts": "^3",
     "@launchpad/contracts": "workspace:^",
     "@launchpad/database": "workspace:^",
     "@nestjs/common": "^11.0.0",

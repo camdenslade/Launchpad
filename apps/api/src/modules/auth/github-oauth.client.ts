@@ -48,21 +48,29 @@ export class GitHubOAuthClient {
     return `https://github.com/login/oauth/authorize?${params.toString()}`;
   }
 
-  async exchangeCode(code: string): Promise<GitHubTokens> {
+  /** Step 3 of sign-in: swap the one-time `code` for tokens. */
+  exchangeCode(code: string): Promise<GitHubTokens> {
+    return this.requestTokens({ code, redirect_uri: this.callbackUrl });
+  }
+
+  /**
+   * Get a fresh access token using a refresh token. GitHub refresh tokens are
+   * single-use: the response contains a new one that replaces the old.
+   */
+  refreshTokens(refreshToken: string): Promise<GitHubTokens> {
+    return this.requestTokens({ grant_type: "refresh_token", refresh_token: refreshToken });
+  }
+
+  private async requestTokens(params: Record<string, string>): Promise<GitHubTokens> {
     const { clientId, clientSecret } = this.credentials();
 
     const response = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: this.callbackUrl
-      })
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, ...params })
     });
 
-    // GitHub returns 200 with an `error` field for bad/expired codes.
+    // GitHub returns 200 with an `error` field for bad/expired codes or tokens.
     const body = (await response.json()) as {
       access_token?: string;
       expires_in?: number;

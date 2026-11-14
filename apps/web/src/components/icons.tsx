@@ -19,3 +19,32 @@ export function PlusIcon({ size = 16 }: IconProps) {
     </svg>
   );
 }
+
+export function SearchIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.75" />
+      <path d="M10.5 10.5 14 14" />
+    </svg>
+  );
+}
+
+export function LockIcon({ size = 11 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="7" width="10" height="7.5" rx="1.5" />
+      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+    </svg>
+  );
+}
+
+export function BranchIcon({ size = 13 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+      <circle cx="4.5" cy="3.5" r="1.75" />
+      <circle cx="4.5" cy="12.5" r="1.75" />
+      <circle cx="11.5" cy="5.5" r="1.75" />
+      <path d="M4.5 5.25v5.5M11.5 7.25c0 2.5-3 2.5-5.5 4" />
+    </svg>
+  );
+}
