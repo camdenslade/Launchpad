@@ -15,6 +15,7 @@
     "@aws-sdk/client-sts": "^3",
     "@launchpad/contracts": "workspace:^",
     "@launchpad/database": "workspace:^",
+    "@launchpad/integrations": "workspace:^",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",

@@ -4,3 +4,4 @@
  */
 export * from "./aws/credentials.js";
 export * from "./aws/state-bucket.js";
+export * from "./aws/ecs.js";

@@ -48,6 +48,8 @@ model User {
   auditEvents      AuditEvent[]
   requestedRuns    InfrastructureRun[] @relation("RunRequestedBy")
   approvedRuns     InfrastructureRun[] @relation("RunApprovedBy")
+  requestedRollbacks RollbackRequest[] @relation("RollbackRequestedBy")
+  approvedRollbacks  RollbackRequest[] @relation("RollbackApprovedBy")
 }
 
 /// A signed-in browser session. The cookie holds a random token; only its
@@ -191,6 +193,8 @@ model Environment {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   runs           InfrastructureRun[]
+  deployments    Deployment[]
+  rollbacks      RollbackRequest[]
 
   @@unique([projectId, name])
 }
@@ -241,6 +245,67 @@ model InfrastructureRun {
   createdAt     DateTime                @default(now())
   updatedAt     DateTime                @updatedAt
   finishedAt    DateTime?
+
+  @@index([environmentId, createdAt])
+}
+
+enum DeploymentState {
+  in_progress
+  completed
+  failed
+}
+
+/// A deployable revision of an environment's service, as observed in the
+/// cloud (ECS task definition revisions). Source of truth is the cloud;
+/// this table caches it and remembers rollout outcomes.
+model Deployment {
+  id                String           @id @default(uuid())
+  environmentId     String
+  environment       Environment      @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  taskDefinitionArn String
+  revision          Int
+  image             String?
+  commitSha         String?
+  registeredAt      DateTime?
+  registeredBy      String?
+  /// Last rollout outcome seen while this revision was deploying (null = never seen deploying).
+  state             DeploymentState?
+  stateReason       String?
+  firstSeenAt       DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([environmentId, taskDefinitionArn])
+  @@index([environmentId, revision])
+}
+
+enum RollbackStatus {
+  pending_approval
+  queued
+  running
+  succeeded
+  failed
+  rejected
+}
+
+/// A request to roll an environment's service back to an earlier revision.
+model RollbackRequest {
+  id                      String         @id @default(uuid())
+  environmentId           String
+  environment             Environment    @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  targetTaskDefinitionArn String
+  targetRevision          Int
+  /// Revision that was live when the rollback was requested.
+  fromRevision            Int?
+  status                  RollbackStatus @default(queued)
+  error                   String?
+  jobId                   String?
+  requestedById           String?
+  requestedBy             User?          @relation("RollbackRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  approvedById            String?
+  approvedBy              User?          @relation("RollbackApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  finishedAt              DateTime?
 
   @@index([environmentId, createdAt])
 }

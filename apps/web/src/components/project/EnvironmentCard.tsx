@@ -20,6 +20,7 @@ import { PlanReview } from "./PlanReview.js";
 import { ACTIVE_STATUSES, RunStatus } from "./RunStatus.js";
 import { ServiceSettingsForm } from "./ServiceSettingsForm.js";
 import { DeploySetup } from "./DeploySetup.js";
+import { DeploymentsPanel } from "./DeploymentsPanel.js";
 
 const POLL_MS = 2500;
 
@@ -42,6 +43,7 @@ export function EnvironmentCard({ environment, currentUser, onChanged, onDeleted
   const [error, setError] = useState<string | null>(null);
   const [editingService, setEditingService] = useState(false);
   const [showDeploySetup, setShowDeploySetup] = useState(false);
+  const [showDeployments, setShowDeployments] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   const active = run !== null && ACTIVE_STATUSES.includes(run.status);
@@ -219,11 +221,19 @@ export function EnvironmentCard({ environment, currentUser, onChanged, onDeleted
               <span>
                 <strong>Deploys</strong> <span className="muted">GitHub Actions → ECR → ECS</span>
               </span>
-              <button type="button" className="link-button" onClick={() => setShowDeploySetup(true)}>
-                Set up deploys
-              </button>
+              <span className="row-actions">
+                <button type="button" className="link-button" onClick={() => setShowDeployments((v) => !v)}>
+                  {showDeployments ? "Hide history" : "History & rollback"}
+                </button>
+                <button type="button" className="link-button" onClick={() => setShowDeploySetup(true)}>
+                  Set up deploys
+                </button>
+              </span>
             </div>
           )
+        )}
+        {service.enabled && provisioned && showDeployments && (
+          <DeploymentsPanel environment={environment} currentUser={currentUser} onClose={() => setShowDeployments(false)} />
         )}
       </div>
 

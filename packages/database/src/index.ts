@@ -33,13 +33,17 @@ export {
   EnvironmentKind,
   ApprovalPolicy,
   InfrastructureRunStatus,
-  InfrastructureOperation
+  InfrastructureOperation,
+  DeploymentState,
+  RollbackStatus
 } from "../generated/prisma/client.js";
 export * from "./jobs.js";
 export type {
   GitHubCredential,
   AuditEvent,
   CloudAccount,
+  Deployment,
+  RollbackRequest,
   Environment,
   InfrastructureRun,
   Job,
