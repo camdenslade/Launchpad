@@ -25,12 +25,22 @@ export function createDatabaseClient(
   return new PrismaClient({ adapter });
 }
 
-export { PrismaClient, Prisma, JobStatus, CloudAccountStatus } from "../generated/prisma/client.js";
+export {
+  PrismaClient,
+  Prisma,
+  JobStatus,
+  CloudAccountStatus,
+  EnvironmentKind,
+  ApprovalPolicy,
+  InfrastructureRunStatus
+} from "../generated/prisma/client.js";
 export * from "./jobs.js";
 export type {
   GitHubCredential,
   AuditEvent,
   CloudAccount,
+  Environment,
+  InfrastructureRun,
   Job,
   Project,
   Session,

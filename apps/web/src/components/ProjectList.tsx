@@ -1,4 +1,5 @@
 import type { Project } from "@launchpad/contracts";
+import { linkProps } from "../lib/router.js";
 import { BranchIcon, GitHubIcon } from "./icons.js";
 import { LanguageBadge, ProjectAvatar } from "./ProjectAvatar.js";
 
@@ -21,7 +22,11 @@ export function ProjectList({ projects, onDelete }: ProjectListProps) {
           <ProjectAvatar name={project.name} avatarUrl={project.avatarUrl} />
 
           <div style={{ minWidth: 0 }}>
-            <h3 className="project-row__name">{project.name}</h3>
+            <h3 className="project-row__name">
+              <a {...linkProps(`/projects/${project.id}`)} className="project-row__link">
+                {project.name}
+              </a>
+            </h3>
             {project.description && (
               <p className="project-row__description">{project.description}</p>
             )}

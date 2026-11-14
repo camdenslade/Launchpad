@@ -5,6 +5,8 @@ import { DatabaseModule } from "./database.module.js";
 import { JOB_HANDLER_CLASSES } from "./jobs/handlers/index.js";
 import { JOB_HANDLERS, type JobHandler } from "./jobs/job-handler.js";
 import { JobRunnerService } from "./processors/job-runner.service.js";
+import { InfrastructureContext } from "./terraform/infrastructure-context.service.js";
+import { TerraformRunner } from "./terraform/terraform-runner.service.js";
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { JobRunnerService } from "./processors/job-runner.service.js";
     DatabaseModule
   ],
   providers: [
+    TerraformRunner,
+    InfrastructureContext,
     ...JOB_HANDLER_CLASSES,
     // Collect every handler into one injectable list for the runner.
     {

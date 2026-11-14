@@ -41,3 +41,22 @@ export function linkProps(path: string) {
     }
   };
 }
+
+/**
+ * Matches "/projects/:id" style patterns. Returns the params, or null.
+ * matchPath("/projects/:id", "/projects/42") -> { id: "42" }
+ */
+export function matchPath(pattern: string, pathname: string): Record<string, string> | null {
+  const names: string[] = [];
+  const regex = new RegExp(
+    "^" +
+      pattern.replace(/\/:([a-zA-Z]+)/g, (_match, name: string) => {
+        names.push(name);
+        return "/([^/]+)";
+      }) +
+      "/?$"
+  );
+  const match = regex.exec(pathname);
+  if (!match) return null;
+  return Object.fromEntries(names.map((name, i) => [name, decodeURIComponent(match[i + 1] ?? "")]));
+}

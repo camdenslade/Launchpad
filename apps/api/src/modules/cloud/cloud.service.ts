@@ -165,6 +165,12 @@ export class CloudService {
 
   async remove(user: CurrentUser, id: string): Promise<void> {
     const account = await this.find(id);
+    const environments = await this.db.environment.count({ where: { cloudAccountId: id } });
+    if (environments > 0) {
+      throw new ConflictException(
+        `${environments} environment(s) use this account. Delete them before disconnecting it.`
+      );
+    }
     await this.db.cloudAccount.delete({ where: { id } });
     await this.audit.record({
       actorId: user.id,

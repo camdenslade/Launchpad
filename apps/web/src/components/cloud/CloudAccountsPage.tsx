@@ -3,6 +3,7 @@ import type { CloudAccount } from "@launchpad/contracts";
 import { deleteCloudAccount, listCloudAccounts } from "../../api/cloud.js";
 import { PlusIcon } from "../icons.js";
 import { ConnectAwsPanel } from "./ConnectAwsPanel.js";
+import { ProviderLogo } from "./ProviderLogo.js";
 
 const STATUS_LABEL: Record<CloudAccount["status"], string> = {
   connected: "Connected",
@@ -88,9 +89,7 @@ export function CloudAccountsPage() {
         <ul className="project-list">
           {accounts.map((account) => (
             <li key={account.id} className="project-row">
-              <div className="project-avatar project-avatar--letter cloud-badge" aria-hidden="true">
-                AWS
-              </div>
+              <ProviderLogo provider={account.provider} />
               <div style={{ minWidth: 0 }}>
                 <h3 className="project-row__name">
                   {account.name}{" "}

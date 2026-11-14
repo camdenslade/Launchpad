@@ -6,7 +6,8 @@ import { BRAND } from "./brand.js";
 import { LogoMark, LogoWide } from "./components/brand/Logo.js";
 import { CloudAccountsPage } from "./components/cloud/CloudAccountsPage.js";
 import { Dashboard } from "./components/Dashboard.js";
-import { linkProps, usePathname } from "./lib/router.js";
+import { ProjectPage } from "./components/project/ProjectPage.js";
+import { linkProps, matchPath, usePathname } from "./lib/router.js";
 import { SignInScreen } from "./components/SignInScreen.js";
 import "./styles.css";
 
@@ -68,8 +69,8 @@ function App() {
                 <a
                   key={item.path}
                   {...linkProps(item.path)}
-                  className={`nav-link${pathname === item.path ? " nav-link--active" : ""}`}
-                  aria-current={pathname === item.path ? "page" : undefined}
+                  className={`nav-link${isActive(item.path, pathname) ? " nav-link--active" : ""}`}
+                  aria-current={isActive(item.path, pathname) ? "page" : undefined}
                 >
                   {item.label}
                 </a>
@@ -87,10 +88,23 @@ function App() {
       </header>
 
       <main className="page">
-        {pathname === "/cloud" ? <CloudAccountsPage /> : <Dashboard />}
+        <Routes pathname={pathname} user={user} />
       </main>
     </>
   );
+}
+
+/** Picks the page for the current URL. */
+function Routes({ pathname, user }: { pathname: string; user: CurrentUser }) {
+  const project = matchPath("/projects/:id", pathname);
+  if (project?.id) return <ProjectPage key={project.id} projectId={project.id} currentUser={user} />;
+  if (pathname === "/cloud") return <CloudAccountsPage />;
+  return <Dashboard />;
+}
+
+/** "Projects" stays highlighted on project detail pages. */
+function isActive(path: string, pathname: string): boolean {
+  return path === "/" ? pathname === "/" || pathname.startsWith("/projects/") : pathname.startsWith(path);
 }
 
 export default App;

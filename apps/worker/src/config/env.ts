@@ -1,4 +1,5 @@
-import { hostname } from "node:os";
+import { hostname, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 
 /** Every environment variable the worker reads, validated at startup. */
@@ -10,7 +11,18 @@ export const EnvSchema = z.object({
   /** How often to look for new jobs when the queue is empty. */
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(100).default(1000),
   /** A job "running" longer than this is assumed abandoned and re-queued. */
-  WORKER_STALE_JOB_MS: z.coerce.number().int().min(60_000).default(30 * 60_000)
+  WORKER_STALE_JOB_MS: z.coerce.number().int().min(60_000).default(30 * 60_000),
+  /** Scratch space for Terraform runs (one folder per run, deleted after). */
+  WORKER_WORK_DIR: z.string().min(1).default(join(tmpdir(), "launchpad-worker")),
+  /** Terraform executable (must be >= 1.10). */
+  TERRAFORM_BIN: z.string().min(1).default("terraform"),
+  /**
+   * Folder holding Launchpad's Terraform (stacks/ and modules/). Point this at
+   * your platform team's own checkout to customise the golden path.
+   */
+  TERRAFORM_DIR: z.string().min(1).default(resolve(process.cwd(), "../../infrastructure/terraform")),
+  /** Hard limit for a single terraform command. */
+  TERRAFORM_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(45 * 60_000)
 });
 
 export type Env = z.infer<typeof EnvSchema>;

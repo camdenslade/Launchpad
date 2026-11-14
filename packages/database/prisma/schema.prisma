@@ -27,6 +27,7 @@ model Project {
   language       String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  environments   Environment[]
 
   @@unique([sourceProvider, sourceRepoId])
 }
@@ -45,6 +46,8 @@ model User {
   githubCredential GitHubCredential?
   cloudAccounts    CloudAccount[]
   auditEvents      AuditEvent[]
+  requestedRuns    InfrastructureRun[] @relation("RunRequestedBy")
+  approvedRuns     InfrastructureRun[] @relation("RunApprovedBy")
 }
 
 /// A signed-in browser session. The cookie holds a random token; only its
@@ -131,6 +134,7 @@ model CloudAccount {
   createdBy      User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
+  environments   Environment[]
 
   @@unique([provider, accountId])
 }
@@ -149,4 +153,83 @@ model AuditEvent {
 
   @@index([targetType, targetId])
   @@index([createdAt])
+}
+
+enum EnvironmentKind {
+  development
+  staging
+  production
+}
+
+/// Who may approve an environment's infrastructure changes.
+enum ApprovalPolicy {
+  /// The person who requested the plan may approve it (small teams).
+  any_member
+  /// A different person must approve (four-eyes, default for production).
+  different_member
+}
+
+/// A deployable instance of a project (e.g. its staging environment) in a
+/// connected cloud account. Its infrastructure comes from a Launchpad stack.
+model Environment {
+  id             String          @id @default(uuid())
+  projectId      String
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name           String
+  kind           EnvironmentKind
+  /// Immutable prefix for cloud resource names (e.g. "payments-api-staging").
+  /// Fixed at creation so renaming the project never re-creates infrastructure.
+  slug           String          @unique
+  cloudAccountId String
+  /// Restrict: infrastructure must be torn down before its account is removed.
+  cloudAccount   CloudAccount    @relation(fields: [cloudAccountId], references: [id], onDelete: Restrict)
+  region         String
+  approvalPolicy ApprovalPolicy  @default(any_member)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  runs           InfrastructureRun[]
+
+  @@unique([projectId, name])
+}
+
+enum InfrastructureRunStatus {
+  queued
+  planning
+  /// Plan ready, waiting for a human decision.
+  planned
+  /// Plan found nothing to change.
+  no_changes
+  approved
+  applying
+  applied
+  rejected
+  /// A newer plan for the same environment replaced this one.
+  superseded
+  failed
+}
+
+/// One plan -> approve -> apply cycle for an environment's infrastructure.
+model InfrastructureRun {
+  id            String                  @id @default(uuid())
+  environmentId String
+  environment   Environment             @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  status        InfrastructureRunStatus @default(queued)
+  /// { add, change, destroy, resources: [{ address, actions }] }
+  summary       Json?
+  planLog       String?
+  applyLog      String?
+  outputs       Json?
+  error         String?
+  planJobId     String?
+  applyJobId    String?
+  requestedById String?
+  requestedBy   User?                   @relation("RunRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  approvedById  String?
+  approvedBy    User?                   @relation("RunApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt    DateTime?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  finishedAt    DateTime?
+
+  @@index([environmentId, createdAt])
 }
