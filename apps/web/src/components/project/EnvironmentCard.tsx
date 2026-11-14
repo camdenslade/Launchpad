@@ -19,6 +19,7 @@ import { estimateMonthlyCost, SERVICE_SIZES } from "@launchpad/contracts";
 import { PlanReview } from "./PlanReview.js";
 import { ACTIVE_STATUSES, RunStatus } from "./RunStatus.js";
 import { ServiceSettingsForm } from "./ServiceSettingsForm.js";
+import { DeploySetup } from "./DeploySetup.js";
 
 const POLL_MS = 2500;
 
@@ -40,6 +41,7 @@ export function EnvironmentCard({ environment, currentUser, onChanged, onDeleted
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingService, setEditingService] = useState(false);
+  const [showDeploySetup, setShowDeploySetup] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   const active = run !== null && ACTIVE_STATUSES.includes(run.status);
@@ -208,6 +210,20 @@ export function EnvironmentCard({ environment, currentUser, onChanged, onDeleted
         )}
         {settingsSaved && !editingService && idle && (
           <p className="step__hint">Saved. Plan changes to see what this does before anything is applied.</p>
+        )}
+        {service.enabled && provisioned && !editingService && (
+          showDeploySetup ? (
+            <DeploySetup environment={environment} onClose={() => setShowDeploySetup(false)} />
+          ) : (
+            <div className="env-card__service-summary" style={{ marginTop: 10 }}>
+              <span>
+                <strong>Deploys</strong> <span className="muted">GitHub Actions → ECR → ECS</span>
+              </span>
+              <button type="button" className="link-button" onClick={() => setShowDeploySetup(true)}>
+                Set up deploys
+              </button>
+            </div>
+          )
         )}
       </div>
 

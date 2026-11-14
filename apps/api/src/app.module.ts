@@ -5,6 +5,7 @@ import { AuditModule } from "./modules/audit/audit.service.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { CloudModule } from "./modules/cloud/cloud.module.js";
 import { DatabaseModule } from "./modules/database/database.module.js";
+import { DeploymentsModule } from "./modules/deployments/deployments.module.js";
 import { EnvironmentsModule } from "./modules/environments/environments.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
 import { JobsModule } from "./modules/jobs/jobs.module.js";
@@ -22,6 +23,7 @@ import { ProjectsModule } from "./modules/projects/projects.module.js";
     AuthModule,
     CloudModule,
     EnvironmentsModule,
+    DeploymentsModule,
     HealthModule,
     JobsModule,
     ProjectsModule

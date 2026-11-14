@@ -10,8 +10,12 @@
  *     launchpad-* clusters/roles, lp-* load balancers, /launchpad/* log groups
  *   - EC2 networking: may only create resources tagged managed-by=launchpad,
  *     and only modify/delete resources carrying that tag
- *   - IAM: may only create/pass launchpad-* roles, only to ECS tasks, and only
- *     attach AWS's ECS task-execution policy. It cannot modify itself.
+ *   - IAM: may only create launchpad-* roles that carry the
+ *     LaunchpadWorkloadBoundary permissions boundary, pass them only to ECS
+ *     tasks, and
+ *     only attach AWS's ECS task-execution policy. It cannot modify itself
+ *     or remove a boundary.
+ *   - GitHub Actions OIDC provider (optional), for keyless deploys.
  *
  * When a module is added, add its permissions here and bump
  * ACCESS_ROLE_TEMPLATE_VERSION; customers then update their stack.
@@ -23,7 +27,7 @@
  * doesn't interpolate it.
  */
 export const ACCESS_ROLE_ROLE_NAME = "LaunchpadAccess";
-export const ACCESS_ROLE_TEMPLATE_VERSION = 3;
+export const ACCESS_ROLE_TEMPLATE_VERSION = 4;
 
 export const ACCESS_ROLE_TEMPLATE = `AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
@@ -43,6 +47,16 @@ Parameters:
   RoleName:
     Type: String
     Default: ${ACCESS_ROLE_ROLE_NAME}
+  CreateGitHubOidcProvider:
+    Type: String
+    Description: >-
+      Create the GitHub Actions OIDC identity provider. Choose "false" if this
+      account already has one for token.actions.githubusercontent.com.
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+Conditions:
+  CreateGitHubOidcProvider: !Equals [!Ref CreateGitHubOidcProvider, "true"]
 
 Resources:
   LaunchpadAccessRole:
@@ -268,12 +282,68 @@ Resources:
             Resource:
               - !Sub "arn:\${AWS::Partition}:logs:*:\${AWS::AccountId}:log-group:/launchpad/*"
               - !Sub "arn:\${AWS::Partition}:logs:*:\${AWS::AccountId}:log-group:/launchpad/*:*"
-          - Sid: TaskRoles
+
+  # The ceiling for every role Launchpad creates (task, execution and deploy
+  # roles). Whatever is attached to a launchpad-* role, it can never do more
+  # than this, which is what makes letting Launchpad create roles safe.
+  WorkloadBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: LaunchpadWorkloadBoundary
+      Description: Launchpad - maximum permissions of any role Launchpad creates (permissions boundary)
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: RegistryLogin
+            Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: "*"
+          - Sid: PullAndPushImages
             Effect: Allow
             Action:
-              - iam:CreateRole
-              - iam:DeleteRole
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchCheckLayerAvailability
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:PutImage
+              - ecr:DescribeImages
+            Resource: !Sub "arn:\${AWS::Partition}:ecr:*:\${AWS::AccountId}:repository/launchpad/*"
+          - Sid: WriteLogs
+            Effect: Allow
+            Action: [logs:CreateLogStream, logs:PutLogEvents]
+            Resource: !Sub "arn:\${AWS::Partition}:logs:*:\${AWS::AccountId}:log-group:/launchpad/*:*"
+          - Sid: DeployTaskDefinitions
+            Effect: Allow
+            Action: [ecs:RegisterTaskDefinition, ecs:DescribeTaskDefinition]
+            Resource: "*"
+          - Sid: DeployServices
+            Effect: Allow
+            Action: [ecs:UpdateService, ecs:DescribeServices]
+            Resource: !Sub "arn:\${AWS::Partition}:ecs:*:\${AWS::AccountId}:service/launchpad-*/*"
+          - Sid: PassWorkloadRolesToEcsTasks
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub "arn:\${AWS::Partition}:iam::\${AWS::AccountId}:role/launchpad-*"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ecs-tasks.amazonaws.com
+
+  # Lets the access role manage launchpad-* roles, only ever with the boundary.
+  WorkloadRolesPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Launchpad - create and manage launchpad-* roles, always capped by LaunchpadWorkloadBoundary
+      Roles: [!Ref LaunchpadAccessRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ManageWorkloadRoles
+            Effect: Allow
+            Action:
               - iam:GetRole
+              - iam:DeleteRole
               - iam:UpdateRole
               - iam:UpdateRoleDescription
               - iam:UpdateAssumeRolePolicy
@@ -282,9 +352,18 @@ Resources:
               - iam:ListRoleTags
               - iam:ListAttachedRolePolicies
               - iam:ListRolePolicies
-              - iam:ListInstanceProfilesForRole
+              - iam:GetRolePolicy
+              - iam:DeleteRolePolicy
               - iam:DetachRolePolicy
+              - iam:ListInstanceProfilesForRole
             Resource: !Sub "arn:\${AWS::Partition}:iam::\${AWS::AccountId}:role/launchpad-*"
+          - Sid: CreateAndGrantOnlyWithBoundary
+            Effect: Allow
+            Action: [iam:CreateRole, iam:PutRolePolicy]
+            Resource: !Sub "arn:\${AWS::Partition}:iam::\${AWS::AccountId}:role/launchpad-*"
+            Condition:
+              StringEquals:
+                iam:PermissionsBoundary: !Ref WorkloadBoundary
           - Sid: AttachOnlyTaskExecutionPolicy
             Effect: Allow
             Action: iam:AttachRolePolicy
@@ -292,6 +371,8 @@ Resources:
             Condition:
               ArnEquals:
                 iam:PolicyARN: !Sub "arn:\${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+              StringEquals:
+                iam:PermissionsBoundary: !Ref WorkloadBoundary
           - Sid: PassRolesOnlyToEcsTasks
             Effect: Allow
             Action: iam:PassRole
@@ -299,6 +380,10 @@ Resources:
             Condition:
               StringEquals:
                 iam:PassedToService: ecs-tasks.amazonaws.com
+          - Sid: NeverRemoveTheBoundary
+            Effect: Deny
+            Action: [iam:DeleteRolePermissionsBoundary, iam:PutRolePermissionsBoundary]
+            Resource: !Sub "arn:\${AWS::Partition}:iam::\${AWS::AccountId}:role/launchpad-*"
           - Sid: ServiceLinkedRoles
             # First use of ECS / load balancing in an account creates these.
             Effect: Allow
@@ -309,6 +394,18 @@ Resources:
                 iam:AWSServiceName:
                   - ecs.amazonaws.com
                   - elasticloadbalancing.amazonaws.com
+
+  # Lets GitHub Actions authenticate to this account with short-lived OIDC
+  # tokens instead of stored AWS keys. One per account; skip if it exists.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateGitHubOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      Tags:
+        - Key: managed-by
+          Value: launchpad
 
 Outputs:
   RoleArn:

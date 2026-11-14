@@ -24,3 +24,25 @@ output "task_definition_family" {
 output "log_group" {
   value = try(module.service[0].log_group_name, null)
 }
+
+output "deploy_role_arn" {
+  description = "Role GitHub Actions assumes (OIDC) to deploy this environment."
+  value       = try(module.deploy_role[0].role_arn, null)
+}
+
+output "deploy_oidc_subject" {
+  value = try(module.deploy_role[0].oidc_subject, null)
+}
+
+output "container_name" {
+  value = try(module.service[0].container_name, null)
+}
+
+output "aws_region" {
+  value = var.region
+}
+
+output "permissions_boundary_arn" {
+  description = "Boundary applied to every role this stack creates."
+  value       = local.permissions_boundary_arn
+}

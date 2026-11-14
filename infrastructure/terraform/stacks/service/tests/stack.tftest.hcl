@@ -16,6 +16,12 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
@@ -26,6 +32,7 @@ mock_provider "aws" {
 variables {
   environment_slug = "payments-api-staging"
   environment_kind = "staging"
+  environment_name = "staging"
   region           = "us-east-1"
 }
 
@@ -111,4 +118,52 @@ run "rejects_invalid_slug" {
   }
 
   expect_failures = [var.environment_slug]
+}
+
+run "deploy_role_only_for_github_projects" {
+  command = plan
+
+  variables {
+    service = { enabled = true }
+  }
+
+  assert {
+    condition     = length(module.deploy_role) == 0
+    error_message = "No deploy role without a GitHub repository."
+  }
+}
+
+run "deploy_role_trust_is_pinned" {
+  command = plan
+
+  variables {
+    service           = { enabled = true }
+    github_repository = "acme/payments-api"
+  }
+
+  assert {
+    condition     = module.deploy_role[0].oidc_subject == "repo:acme/payments-api:environment:staging"
+    error_message = "Deploy role must trust exactly one repository and GitHub environment."
+  }
+
+  assert {
+    condition     = startswith(module.deploy_role[0].role_name, "launchpad-")
+    error_message = "Deploy role must be named launchpad-* (the access role is scoped to that prefix)."
+  }
+
+  assert {
+    condition     = output.permissions_boundary_arn == "arn:aws:iam::123456789012:policy/LaunchpadWorkloadBoundary"
+    error_message = "Roles must use the LaunchpadWorkloadBoundary permissions boundary."
+  }
+}
+
+run "deploy_role_rejects_bad_repository" {
+  command = plan
+
+  variables {
+    service           = { enabled = true }
+    github_repository = "not a repo"
+  }
+
+  expect_failures = [var.github_repository]
 }

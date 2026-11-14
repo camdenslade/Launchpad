@@ -79,3 +79,9 @@ variable "container_insights" {
   type        = bool
   default     = false
 }
+
+variable "permissions_boundary_arn" {
+  description = "Permissions boundary for the roles this module creates (LaunchpadWorkloadBoundary)."
+  type        = string
+  default     = null
+}

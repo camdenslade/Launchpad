@@ -25,6 +25,22 @@ variable "region" {
   type        = string
 }
 
+variable "environment_name" {
+  description = "Environment name in Launchpad (e.g. staging); also the GitHub environment deploys must use."
+  type        = string
+}
+
+variable "github_repository" {
+  description = "owner/name of the project's GitHub repository; null if not on GitHub."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.github_repository == null || can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must look like owner/name."
+  }
+}
+
 # Developer-facing inputs (Environment settings in Launchpad).
 
 variable "service" {

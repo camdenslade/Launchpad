@@ -40,3 +40,12 @@ output "role_names" {
   description = "IAM roles created (all prefixed launchpad-)."
   value       = [aws_iam_role.execution.name, aws_iam_role.task.name]
 }
+
+output "service_arn" {
+  value = aws_ecs_service.this.id
+}
+
+output "container_name" {
+  description = "Container to update when deploying a new image."
+  value       = "app"
+}

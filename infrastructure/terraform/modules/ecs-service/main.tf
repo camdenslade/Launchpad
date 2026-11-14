@@ -47,8 +47,9 @@ data "aws_iam_policy_document" "ecs_tasks_assume" {
 
 # Used by ECS itself: pull the image, write logs.
 resource "aws_iam_role" "execution" {
-  name               = substr("launchpad-${var.name}-exec", 0, 64)
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+  name                 = substr("launchpad-${var.name}-exec", 0, 64)
+  assume_role_policy   = data.aws_iam_policy_document.ecs_tasks_assume.json
+  permissions_boundary = var.permissions_boundary_arn
 }
 
 resource "aws_iam_role_policy_attachment" "execution" {
@@ -59,8 +60,9 @@ resource "aws_iam_role_policy_attachment" "execution" {
 # Used by the application. Starts with no permissions; grant only what the
 # app needs through a dedicated module input when that's added.
 resource "aws_iam_role" "task" {
-  name               = substr("launchpad-${var.name}-task", 0, 64)
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+  name                 = substr("launchpad-${var.name}-task", 0, 64)
+  assume_role_policy   = data.aws_iam_policy_document.ecs_tasks_assume.json
+  permissions_boundary = var.permissions_boundary_arn
 }
 
 # --- Networking --------------------------------------------------------------

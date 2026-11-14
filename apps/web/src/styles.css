@@ -958,3 +958,14 @@ code {
 @media (max-width: 640px) {
   .form-grid--4 { grid-template-columns: 1fr 1fr; }
 }
+
+/* Deploy setup */
+.deploy-setup {
+  margin-top: 12px;
+  padding: 16px 18px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.deploy-setup__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 0.9rem; }
+.deploy-setup .step--active::before { color: var(--text); background: var(--surface-raised); border-color: var(--border-strong); }

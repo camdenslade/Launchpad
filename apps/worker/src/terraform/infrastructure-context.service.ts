@@ -11,6 +11,7 @@ import type {
   Environment,
   InfrastructureRun,
   Prisma,
+  Project,
   PrismaClient
 } from "@launchpad/database";
 import { z } from "zod";
@@ -24,7 +25,7 @@ export const RunPayloadSchema = z.object({ runId: z.uuid() }).strict();
 export const STACK = "service";
 
 export type RunWithEnvironment = InfrastructureRun & {
-  environment: Environment & { cloudAccount: CloudAccount };
+  environment: Environment & { cloudAccount: CloudAccount; project: Project };
 };
 
 export interface CloudSession {
@@ -47,7 +48,7 @@ export class InfrastructureContext {
 
     const run = await this.db.infrastructureRun.findUnique({
       where: { id: parsed.data.runId },
-      include: { environment: { include: { cloudAccount: true } } }
+      include: { environment: { include: { cloudAccount: true, project: true } } }
     });
     if (!run) throw new NonRetryableJobError(`Infrastructure run ${parsed.data.runId} not found`);
     return run;
@@ -101,7 +102,10 @@ export class InfrastructureContext {
     return {
       environment_slug: run.environment.slug,
       environment_kind: run.environment.kind,
+      environment_name: run.environment.name,
       region: run.environment.region,
+      // Enables the GitHub OIDC deploy role when the project lives on GitHub.
+      github_repository: githubRepository(run.environment.project.repositoryUrl),
       // Matches the stack's `service` object variable (snake_case).
       service: {
         enabled: settings.enabled,
@@ -128,6 +132,18 @@ export class InfrastructureContext {
     });
     // Infrastructure failures are deterministic; never retry automatically.
     return new NonRetryableJobError(message);
+  }
+}
+
+/** "https://github.com/acme/api(.git)" -> "acme/api"; null for other hosts. */
+export function githubRepository(url: string): string | null {
+  try {
+    const { hostname, pathname } = new URL(url);
+    if (hostname !== "github.com" && hostname !== "www.github.com") return null;
+    const match = /^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(\.git)?\/?$/.exec(pathname);
+    return match ? `${match[1]}/${match[2]}` : null;
+  } catch {
+    return null;
   }
 }
 

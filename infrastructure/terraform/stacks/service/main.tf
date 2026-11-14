@@ -5,6 +5,7 @@
 #   registry  always      (free while empty)
 #   network   if enabled  (VPC/subnets: no hourly cost)
 #   service   if enabled  (ALB + Fargate: ~$25/month while running)
+#   deploy    if enabled and the project is on GitHub (IAM role: free)
 
 provider "aws" {
   region = var.region
@@ -20,8 +21,15 @@ provider "aws" {
   }
 }
 
+data "aws_partition" "current" {}
+data "aws_caller_identity" "current" {}
+
 locals {
   is_production = var.environment_kind == "production"
+
+  # Every role Launchpad creates must carry this boundary (created by the
+  # access-role CloudFormation template); the access role enforces it.
+  permissions_boundary_arn = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:policy/LaunchpadWorkloadBoundary"
 }
 
 module "registry" {
@@ -54,4 +62,20 @@ module "service" {
   cpu               = var.service.cpu
   memory            = var.service.memory
   desired_count     = var.service.desired_count
+
+  permissions_boundary_arn = local.permissions_boundary_arn
+}
+
+module "deploy_role" {
+  source = "../../modules/github-deploy-role"
+  count  = var.service.enabled && var.github_repository != null ? 1 : 0
+
+  name               = var.environment_slug
+  github_repository  = var.github_repository
+  github_environment = var.environment_name
+  ecr_repository_arn = module.registry.repository_arn
+  ecs_service_arn    = module.service[0].service_arn
+  pass_role_arns     = [module.service[0].execution_role_arn, module.service[0].task_role_arn]
+
+  permissions_boundary_arn = local.permissions_boundary_arn
 }
