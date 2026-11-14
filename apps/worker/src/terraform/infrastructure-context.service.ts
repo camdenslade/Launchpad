@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { SERVICE_SIZES, ServiceSettingsSchema } from "@launchpad/contracts";
 import {
   assumeAwsRole,
   awsCredentialEnv,
@@ -84,12 +85,32 @@ export class InfrastructureContext {
     };
   }
 
-  /** Variables Launchpad passes to every stack. */
-  stackVariables(run: RunWithEnvironment): Record<string, string> {
+  /**
+   * Variables Launchpad passes to the stack. Developer settings are read at
+   * plan time and baked into the saved plan, so editing them later can't
+   * change what an approved plan applies.
+   */
+  stackVariables(run: RunWithEnvironment): Record<string, unknown> {
+    const parsed = ServiceSettingsSchema.safeParse(run.environment.serviceSettings ?? {});
+    if (!parsed.success) {
+      throw new NonRetryableJobError(`Invalid service settings: ${parsed.error.issues[0]?.message}`);
+    }
+    const settings = parsed.data;
+    const size = SERVICE_SIZES[settings.size];
+
     return {
       environment_slug: run.environment.slug,
       environment_kind: run.environment.kind,
-      region: run.environment.region
+      region: run.environment.region,
+      // Matches the stack's `service` object variable (snake_case).
+      service: {
+        enabled: settings.enabled,
+        container_port: settings.containerPort,
+        health_check_path: settings.healthCheckPath,
+        cpu: size.cpu,
+        memory: size.memory,
+        desired_count: settings.desiredCount
+      }
     };
   }
 

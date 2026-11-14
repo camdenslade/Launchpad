@@ -118,6 +118,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@launchpad/contracts':
+        specifier: workspace:^
+        version: link:../../packages/contracts
       '@launchpad/database':
         specifier: workspace:^
         version: link:../../packages/database

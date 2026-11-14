@@ -57,7 +57,19 @@ export class InfrastructurePlanHandler implements JobHandler {
 
       const steps: [string, string[]][] = [
         ["init", ["init", "-input=false", "-no-color", "-backend-config=backend.hcl"]],
-        ["plan", ["plan", "-input=false", "-no-color", "-lock-timeout=120s", "-out=tfplan"]]
+        [
+          "plan",
+          [
+            "plan",
+            "-input=false",
+            "-no-color",
+            "-lock-timeout=120s",
+            // Teardown: plan the removal of everything in state. Applying it
+            // still goes through the same approval as any other plan.
+            ...(run.operation === "destroy" ? ["-destroy"] : []),
+            "-out=tfplan"
+          ]
+        ]
       ];
 
       for (const [name, args] of steps) {

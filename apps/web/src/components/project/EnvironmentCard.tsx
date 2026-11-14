@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
-import type { CurrentUser, Environment, InfrastructureRun, InfrastructureRunDetail } from "@launchpad/contracts";
-import { approveRun, getRun, planEnvironment, rejectRun, updateEnvironment } from "../../api/environments.js";
+import type {
+  CurrentUser,
+  Environment,
+  InfrastructureOperation,
+  InfrastructureRun,
+  InfrastructureRunDetail
+} from "@launchpad/contracts";
+import {
+  approveRun,
+  deleteEnvironment,
+  getRun,
+  planEnvironment,
+  rejectRun,
+  updateEnvironment
+} from "../../api/environments.js";
 import { ProviderLogo } from "../cloud/ProviderLogo.js";
+import { estimateMonthlyCost, SERVICE_SIZES } from "@launchpad/contracts";
 import { PlanReview } from "./PlanReview.js";
 import { ACTIVE_STATUSES, RunStatus } from "./RunStatus.js";
+import { ServiceSettingsForm } from "./ServiceSettingsForm.js";
 
 const POLL_MS = 2500;
 
@@ -11,19 +26,28 @@ interface EnvironmentCardProps {
   environment: Environment;
   currentUser: CurrentUser;
   onChanged: (environment: Environment) => void;
+  onDeleted: (environmentId: string) => void;
 }
 
 /**
  * One environment: its latest infrastructure run, and the actions that fit
  * that run's state (plan -> review -> approve/reject -> apply progress).
+ * Teardown is the same flow with a "destroy" plan.
  */
-export function EnvironmentCard({ environment, currentUser, onChanged }: EnvironmentCardProps) {
+export function EnvironmentCard({ environment, currentUser, onChanged, onDeleted }: EnvironmentCardProps) {
   const [run, setRun] = useState<InfrastructureRun | InfrastructureRunDetail | null>(environment.latestRun);
   const [log, setLog] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingService, setEditingService] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   const active = run !== null && ACTIVE_STATUSES.includes(run.status);
+  const awaitingDecision = run?.status === "planned";
+  const isTeardown = run?.operation === "destroy";
+
+  // An applied run is the source of truth for whether infrastructure exists.
+  const provisioned = run?.status === "applied" ? run.operation === "apply" : environment.provisioned;
 
   // While the worker is busy, poll the run until it settles.
   useEffect(() => {
@@ -51,6 +75,35 @@ export function EnvironmentCard({ environment, currentUser, onChanged }: Environ
     }
   }
 
+  function plan(operation: InfrastructureOperation) {
+    setSettingsSaved(false);
+    return act(() => planEnvironment(environment.id, operation));
+  }
+
+  function requestTeardown() {
+    const warning =
+      `Plan a teardown of "${environment.name}"? This plans the deletion of all its infrastructure ` +
+      `in ${environment.cloudAccount.name}. Nothing is deleted until the plan is approved.`;
+    if (environment.kind === "production") {
+      // Extra friction for production: type the name.
+      const typed = window.prompt(`${warning}\n\nType "${environment.name}" to continue.`);
+      if (typed !== environment.name) return;
+    } else if (!window.confirm(warning)) {
+      return;
+    }
+    void plan("destroy");
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete the "${environment.name}" environment from Launchpad? Its history is removed too.`)) return;
+    try {
+      await deleteEnvironment(environment.id);
+      onDeleted(environment.id);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   async function toggleLog() {
     if (log !== null || !run) return setLog(null);
     const detail = await getRun(run.id);
@@ -66,11 +119,14 @@ export function EnvironmentCard({ environment, currentUser, onChanged }: Environ
   }
 
   const needsOtherApprover =
-    run?.status === "planned" &&
-    environment.approvalPolicy === "different_member" &&
-    run.requestedBy === currentUser.login;
+    awaitingDecision && environment.approvalPolicy === "different_member" && run?.requestedBy === currentUser.login;
 
-  const registryUrl = run?.status === "applied" ? (run.outputs?.["registry_url"] as string | undefined) : undefined;
+  const outputs = run?.status === "applied" && !isTeardown ? run.outputs : null;
+  const registryUrl = outputs?.["registry_url"] as string | undefined;
+  const serviceUrl = outputs?.["service_url"] as string | undefined;
+  const service = environment.serviceSettings;
+
+  const idle = !busy && !active && !awaitingDecision;
 
   return (
     <article className="env-card">
@@ -79,15 +135,27 @@ export function EnvironmentCard({ environment, currentUser, onChanged }: Environ
           <h3>{environment.name}</h3>
           <span className={`kind-pill kind-pill--${environment.kind}`}>{environment.kind}</span>
         </div>
-        <button
-          type="button"
-          className="button button--secondary button--sm"
-          disabled={busy || active || run?.status === "planned"}
-          onClick={() => act(() => planEnvironment(environment.id))}
-          title={run?.status === "planned" ? "Approve or reject the current plan first" : undefined}
-        >
-          Plan changes
-        </button>
+        <div className="row-actions">
+          {provisioned && (
+            <button type="button" className="button button--ghost button--danger" disabled={!idle} onClick={requestTeardown}>
+              Tear down
+            </button>
+          )}
+          {!provisioned && run && idle && (
+            <button type="button" className="button button--ghost button--danger" onClick={handleDelete}>
+              Delete
+            </button>
+          )}
+          <button
+            type="button"
+            className="button button--secondary button--sm"
+            disabled={!idle}
+            onClick={() => plan("apply")}
+            title={awaitingDecision ? "Approve or reject the current plan first" : undefined}
+          >
+            {provisioned ? "Plan changes" : "Plan infrastructure"}
+          </button>
+        </div>
       </header>
 
       <div className="env-card__meta">
@@ -109,10 +177,44 @@ export function EnvironmentCard({ environment, currentUser, onChanged }: Environ
         </label>
       </div>
 
+      <div className="env-card__service">
+        {editingService ? (
+          <ServiceSettingsForm
+            environment={environment}
+            onSaved={(updated) => {
+              onChanged(updated);
+              setEditingService(false);
+              setSettingsSaved(true);
+            }}
+            onCancel={() => setEditingService(false)}
+          />
+        ) : (
+          <div className="env-card__service-summary">
+            <span>
+              <strong>Service</strong>{" "}
+              {service.enabled ? (
+                <span className="muted">
+                  {SERVICE_SIZES[service.size].label} × {service.desiredCount} · port {service.containerPort} ·
+                  health {service.healthCheckPath} · ~${estimateMonthlyCost(service)}/mo
+                </span>
+              ) : (
+                <span className="muted">Off (registry only)</span>
+              )}
+            </span>
+            <button type="button" className="link-button" onClick={() => setEditingService(true)} disabled={!idle}>
+              Edit
+            </button>
+          </div>
+        )}
+        {settingsSaved && !editingService && idle && (
+          <p className="step__hint">Saved. Plan changes to see what this does before anything is applied.</p>
+        )}
+      </div>
+
       {run ? (
-        <div className="env-card__run">
+        <div className={`env-card__run${isTeardown ? " env-card__run--teardown" : ""}`}>
           <div className="env-card__run-header">
-            <RunStatus status={run.status} />
+            <RunStatus status={run.status} operation={run.operation} />
             <span className="muted">
               {run.requestedBy ? `by ${run.requestedBy} · ` : ""}
               {new Date(run.createdAt).toLocaleString()}
@@ -123,14 +225,16 @@ export function EnvironmentCard({ environment, currentUser, onChanged }: Environ
             </button>
           </div>
 
-          {run.summary && (run.status === "planned" || run.status === "approved" || run.status === "applying" || run.status === "applied") && (
+          {run.summary && ["planned", "approved", "applying", "applied"].includes(run.status) && (
             <PlanReview summary={run.summary} />
           )}
 
-          {run.status === "planned" && (
+          {awaitingDecision && (
             <div className="env-card__decision">
               {needsOtherApprover ? (
                 <p className="muted">Waiting for someone else to approve. You requested this plan.</p>
+              ) : isTeardown ? (
+                <p className="error">Approving permanently deletes the resources listed above.</p>
               ) : (
                 <p className="muted">Nothing changes until this plan is approved.</p>
               )}
@@ -140,17 +244,30 @@ export function EnvironmentCard({ environment, currentUser, onChanged }: Environ
                 </button>
                 <button
                   type="button"
-                  className="button"
+                  className={`button${isTeardown ? " button--destructive" : ""}`}
                   disabled={busy || needsOtherApprover}
                   onClick={() => act(() => approveRun(run.id))}
                 >
-                  Approve &amp; apply
+                  {isTeardown ? "Approve & destroy" : "Approve & apply"}
                 </button>
               </div>
             </div>
           )}
 
-          {run.status === "no_changes" && <p className="muted">Infrastructure already matches the configuration.</p>}
+          {run.status === "no_changes" && !isTeardown && (
+            <p className="muted">Infrastructure already matches the configuration.</p>
+          )}
+          {run.status === "applied" && isTeardown && (
+            <p className="muted">All infrastructure for this environment has been removed. You can delete the environment now.</p>
+          )}
+          {serviceUrl && (
+            <p className="env-card__output">
+              URL{" "}
+              <a href={serviceUrl} target="_blank" rel="noreferrer" className="text-link">
+                {serviceUrl}
+              </a>
+            </p>
+          )}
           {registryUrl && (
             <p className="env-card__output">
               Registry <code>{registryUrl}</code>
@@ -160,7 +277,12 @@ export function EnvironmentCard({ environment, currentUser, onChanged }: Environ
           {log !== null && <pre className="run-log">{log}</pre>}
         </div>
       ) : (
-        <p className="muted env-card__empty">No infrastructure yet. Plan changes to see what will be created.</p>
+        <div className="env-card__empty">
+          <p className="muted">No infrastructure yet. Plan it to see exactly what will be created before anything happens.</p>
+          <button type="button" className="button button--ghost button--danger" onClick={handleDelete}>
+            Delete environment
+          </button>
+        </div>
       )}
 
       {error && <div className="banner">{error}</div>}

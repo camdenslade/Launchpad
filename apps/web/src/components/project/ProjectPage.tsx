@@ -101,7 +101,13 @@ export function ProjectPage({ projectId, currentUser }: ProjectPageProps) {
       ) : (
         <div className="env-list">
           {environments.map((env) => (
-            <EnvironmentCard key={env.id} environment={env} currentUser={currentUser} onChanged={replace} />
+            <EnvironmentCard
+              key={env.id}
+              environment={env}
+              currentUser={currentUser}
+              onChanged={replace}
+              onDeleted={(id) => setEnvironments((current) => (current ?? []).filter((e) => e.id !== id))}
+            />
           ))}
         </div>
       )}

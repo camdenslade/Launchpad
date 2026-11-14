@@ -32,7 +32,8 @@ export {
   CloudAccountStatus,
   EnvironmentKind,
   ApprovalPolicy,
-  InfrastructureRunStatus
+  InfrastructureRunStatus,
+  InfrastructureOperation
 } from "../generated/prisma/client.js";
 export * from "./jobs.js";
 export type {

@@ -12,12 +12,14 @@ import {
 } from "@nestjs/common";
 import {
   CreateEnvironmentSchema,
+  PlanRequestSchema,
   UpdateEnvironmentSchema,
   type CreateEnvironment,
   type CurrentUser as CurrentUserDto,
   type Environment,
   type InfrastructureRun,
   type InfrastructureRunDetail,
+  type PlanRequest,
   type UpdateEnvironment
 } from "@launchpad/contracts";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe.js";
@@ -32,6 +34,7 @@ import { EnvironmentsService } from "./environments.service.js";
  *   DELETE /api/environments/:id
  *   GET    /api/environments/:id/runs
  *   POST   /api/environments/:id/plan            -> 202, runs in the worker
+ *          body { operation?: "apply" | "destroy" }  (destroy = teardown)
  *   GET    /api/infrastructure/runs/:id          (includes logs)
  *   POST   /api/infrastructure/runs/:id/approve  -> 202, apply runs in the worker
  *   POST   /api/infrastructure/runs/:id/reject
@@ -76,8 +79,12 @@ export class EnvironmentsController {
 
   @Post("environments/:id/plan")
   @HttpCode(HttpStatus.ACCEPTED)
-  plan(@CurrentUser() user: CurrentUserDto, @Param("id", ParseUUIDPipe) id: string): Promise<InfrastructureRun> {
-    return this.environments.plan(user, id);
+  plan(
+    @CurrentUser() user: CurrentUserDto,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(PlanRequestSchema)) body: PlanRequest
+  ): Promise<InfrastructureRun> {
+    return this.environments.plan(user, id, body.operation);
   }
 
   @Get("infrastructure/runs/:id")

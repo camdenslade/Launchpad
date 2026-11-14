@@ -24,3 +24,24 @@ variable "region" {
   description = "AWS region to deploy into."
   type        = string
 }
+
+# Developer-facing inputs (Environment settings in Launchpad).
+
+variable "service" {
+  description = "Run the project as a load-balanced ECS Fargate service."
+  type = object({
+    enabled           = optional(bool, false)
+    image             = optional(string, "public.ecr.aws/nginx/nginx:stable-alpine")
+    container_port    = optional(number, 80)
+    health_check_path = optional(string, "/")
+    cpu               = optional(number, 256)
+    memory            = optional(number, 512)
+    desired_count     = optional(number, 1)
+  })
+  default = {}
+
+  validation {
+    condition     = var.service.desired_count >= 0 && var.service.desired_count <= 10
+    error_message = "desired_count must be between 0 and 10."
+  }
+}

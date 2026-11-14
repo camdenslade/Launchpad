@@ -1,6 +1,7 @@
 import type {
   CreateEnvironment,
   Environment,
+  InfrastructureOperation,
   InfrastructureRun,
   InfrastructureRunDetail,
   UpdateEnvironment
@@ -24,8 +25,11 @@ export function deleteEnvironment(id: string): Promise<void> {
 }
 
 /** Starts a Terraform plan in the worker. Poll `getRun` for progress. */
-export function planEnvironment(id: string): Promise<InfrastructureRun> {
-  return request<InfrastructureRun>(`/environments/${id}/plan`, { method: "POST" });
+export function planEnvironment(
+  id: string,
+  operation: InfrastructureOperation = "apply"
+): Promise<InfrastructureRun> {
+  return request<InfrastructureRun>(`/environments/${id}/plan`, { method: "POST", body: { operation } });
 }
 
 export function getRun(id: string): Promise<InfrastructureRunDetail> {

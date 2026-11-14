@@ -4,24 +4,32 @@
  * "Launch in AWS" quick-create link (when AWS_CFN_TEMPLATE_URL points to a
  * public S3 copy of this file).
  *
- * It creates one IAM role whose permissions cover exactly what Launchpad's
- * Terraform modules manage, each scoped to Launchpad-named resources:
- *   - its Terraform state bucket (launchpad-tfstate-<account>-*)
- *   - ECR repositories named launchpad/*
- * When a module is added, its permissions are added here and customers
- * update the stack. Bump TEMPLATE_VERSION whenever this changes.
+ * The role's permissions cover exactly what Launchpad's Terraform modules
+ * manage, each scoped to Launchpad-owned resources:
+ *   - names: launchpad-tfstate-<account>-* buckets, launchpad/* ECR repos,
+ *     launchpad-* clusters/roles, lp-* load balancers, /launchpad/* log groups
+ *   - EC2 networking: may only create resources tagged managed-by=launchpad,
+ *     and only modify/delete resources carrying that tag
+ *   - IAM: may only create/pass launchpad-* roles, only to ECS tasks, and only
+ *     attach AWS's ECS task-execution policy. It cannot modify itself.
+ *
+ * When a module is added, add its permissions here and bump
+ * ACCESS_ROLE_TEMPLATE_VERSION; customers then update their stack.
+ *
+ * Policies are AWS::IAM::ManagedPolicy (6 KB each) rather than inline
+ * (10 KB total per role) so the set can grow.
  *
  * NOTE: `\${...}` below is CloudFormation !Sub syntax, escaped so JavaScript
  * doesn't interpolate it.
  */
 export const ACCESS_ROLE_ROLE_NAME = "LaunchpadAccess";
-export const ACCESS_ROLE_TEMPLATE_VERSION = 2;
+export const ACCESS_ROLE_TEMPLATE_VERSION = 3;
 
 export const ACCESS_ROLE_TEMPLATE = `AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   Lets a self-hosted Launchpad installation manage Launchpad-owned
   infrastructure in this account (template v${ACCESS_ROLE_TEMPLATE_VERSION}).
-  Access requires the external ID; permissions are limited to Launchpad-named resources.
+  Access requires the external ID; permissions are limited to Launchpad-owned resources.
 
 Parameters:
   LaunchpadPrincipalArn:
@@ -53,68 +61,259 @@ Resources:
             Condition:
               StringEquals:
                 sts:ExternalId: !Ref ExternalId
-      Policies:
-        - PolicyName: launchpad-terraform-state
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Sid: StateBucket
-                Effect: Allow
-                Action:
-                  - s3:CreateBucket
-                  - s3:ListBucket
-                  - s3:GetBucketLocation
-                  - s3:GetBucketVersioning
-                  - s3:PutBucketVersioning
-                  - s3:GetBucketPublicAccessBlock
-                  - s3:PutBucketPublicAccessBlock
-                  - s3:GetEncryptionConfiguration
-                  - s3:PutEncryptionConfiguration
-                  - s3:PutBucketTagging
-                Resource: !Sub "arn:\${AWS::Partition}:s3:::launchpad-tfstate-\${AWS::AccountId}-*"
-              - Sid: StateObjects
-                Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                Resource: !Sub "arn:\${AWS::Partition}:s3:::launchpad-tfstate-\${AWS::AccountId}-*/*"
-        - PolicyName: launchpad-container-registry
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Sid: LaunchpadRepositories
-                Effect: Allow
-                Action:
-                  - ecr:CreateRepository
-                  - ecr:DeleteRepository
-                  - ecr:DescribeRepositories
-                  - ecr:DescribeImages
-                  - ecr:ListImages
-                  - ecr:ListTagsForResource
-                  - ecr:TagResource
-                  - ecr:UntagResource
-                  - ecr:GetLifecyclePolicy
-                  - ecr:PutLifecyclePolicy
-                  - ecr:DeleteLifecyclePolicy
-                  - ecr:GetRepositoryPolicy
-                  - ecr:SetRepositoryPolicy
-                  - ecr:DeleteRepositoryPolicy
-                  - ecr:PutImageScanningConfiguration
-                  - ecr:PutImageTagMutability
-                  - ecr:BatchDeleteImage
-                Resource: !Sub "arn:\${AWS::Partition}:ecr:*:\${AWS::AccountId}:repository/launchpad/*"
-              - Sid: RegistryLogin
-                Effect: Allow
-                Action:
-                  - ecr:GetAuthorizationToken
-                Resource: "*"
       Tags:
         - Key: managed-by
           Value: launchpad
+        - Key: launchpad:template-version
+          Value: "${ACCESS_ROLE_TEMPLATE_VERSION}"
+
+  # Terraform state bucket + container registries.
+  StateAndRegistryPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Launchpad - Terraform state bucket and launchpad/* ECR repositories
+      Roles: [!Ref LaunchpadAccessRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: StateBucket
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:ListBucket
+              - s3:GetBucketLocation
+              - s3:GetBucketVersioning
+              - s3:PutBucketVersioning
+              - s3:GetBucketPublicAccessBlock
+              - s3:PutBucketPublicAccessBlock
+              - s3:GetEncryptionConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:PutBucketTagging
+            Resource: !Sub "arn:\${AWS::Partition}:s3:::launchpad-tfstate-\${AWS::AccountId}-*"
+          - Sid: StateObjects
+            Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub "arn:\${AWS::Partition}:s3:::launchpad-tfstate-\${AWS::AccountId}-*/*"
+          - Sid: Repositories
+            Effect: Allow
+            Action:
+              - ecr:CreateRepository
+              - ecr:DeleteRepository
+              - ecr:DescribeRepositories
+              - ecr:DescribeImages
+              - ecr:ListImages
+              - ecr:ListTagsForResource
+              - ecr:TagResource
+              - ecr:UntagResource
+              - ecr:GetLifecyclePolicy
+              - ecr:PutLifecyclePolicy
+              - ecr:DeleteLifecyclePolicy
+              - ecr:GetRepositoryPolicy
+              - ecr:SetRepositoryPolicy
+              - ecr:DeleteRepositoryPolicy
+              - ecr:PutImageScanningConfiguration
+              - ecr:PutImageTagMutability
+              - ecr:BatchDeleteImage
+            Resource: !Sub "arn:\${AWS::Partition}:ecr:*:\${AWS::AccountId}:repository/launchpad/*"
+          - Sid: RegistryLogin
+            Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: "*"
+
+  # VPC networking, restricted by the managed-by=launchpad tag.
+  NetworkPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Launchpad - VPC networking for resources tagged managed-by=launchpad
+      Roles: [!Ref LaunchpadAccessRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Read
+            Effect: Allow
+            Action: ec2:Describe*
+            Resource: "*"
+          - Sid: CreateOnlyWhenTagged
+            Effect: Allow
+            Action:
+              - ec2:CreateVpc
+              - ec2:CreateSubnet
+              - ec2:CreateInternetGateway
+              - ec2:CreateRouteTable
+              - ec2:CreateSecurityGroup
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:AuthorizeSecurityGroupEgress
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:RequestTag/managed-by: launchpad
+          - Sid: CreateInsideLaunchpadVpc
+            Effect: Allow
+            Action: [ec2:CreateSubnet, ec2:CreateRouteTable, ec2:CreateSecurityGroup]
+            Resource: !Sub "arn:\${AWS::Partition}:ec2:*:\${AWS::AccountId}:vpc/*"
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/managed-by: launchpad
+          - Sid: TagOnCreate
+            Effect: Allow
+            Action: ec2:CreateTags
+            Resource: "*"
+            Condition:
+              StringEquals:
+                ec2:CreateAction:
+                  - CreateVpc
+                  - CreateSubnet
+                  - CreateInternetGateway
+                  - CreateRouteTable
+                  - CreateSecurityGroup
+                  - AuthorizeSecurityGroupIngress
+                  - AuthorizeSecurityGroupEgress
+          - Sid: ManageOnlyTagged
+            Effect: Allow
+            Action:
+              - ec2:ModifyVpcAttribute
+              - ec2:DeleteVpc
+              - ec2:ModifySubnetAttribute
+              - ec2:DeleteSubnet
+              - ec2:AttachInternetGateway
+              - ec2:DetachInternetGateway
+              - ec2:DeleteInternetGateway
+              - ec2:CreateRoute
+              - ec2:ReplaceRoute
+              - ec2:DeleteRoute
+              - ec2:AssociateRouteTable
+              - ec2:DisassociateRouteTable
+              - ec2:DeleteRouteTable
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:RevokeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:ModifySecurityGroupRules
+              - ec2:UpdateSecurityGroupRuleDescriptionsIngress
+              - ec2:UpdateSecurityGroupRuleDescriptionsEgress
+              - ec2:DeleteSecurityGroup
+              - ec2:CreateTags
+              - ec2:DeleteTags
+            Resource: "*"
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/managed-by: launchpad
+
+  # ECS, load balancers, logs, and the service's own IAM roles.
+  ComputePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Launchpad - ECS services, load balancers, logs and launchpad-* task roles
+      Roles: [!Ref LaunchpadAccessRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EcsLaunchpadResources
+            Effect: Allow
+            Action:
+              - ecs:CreateCluster
+              - ecs:DeleteCluster
+              - ecs:DescribeClusters
+              - ecs:UpdateCluster
+              - ecs:UpdateClusterSettings
+              - ecs:PutClusterCapacityProviders
+              - ecs:CreateService
+              - ecs:UpdateService
+              - ecs:DeleteService
+              - ecs:DescribeServices
+              - ecs:TagResource
+              - ecs:UntagResource
+              - ecs:ListTagsForResource
+            Resource:
+              - !Sub "arn:\${AWS::Partition}:ecs:*:\${AWS::AccountId}:cluster/launchpad-*"
+              - !Sub "arn:\${AWS::Partition}:ecs:*:\${AWS::AccountId}:service/launchpad-*/*"
+              - !Sub "arn:\${AWS::Partition}:ecs:*:\${AWS::AccountId}:task-definition/launchpad-*:*"
+          - Sid: EcsTaskDefinitions
+            # These actions don't support resource-level permissions.
+            Effect: Allow
+            Action:
+              - ecs:RegisterTaskDefinition
+              - ecs:DeregisterTaskDefinition
+              - ecs:DescribeTaskDefinition
+              - ecs:ListTaskDefinitions
+            Resource: "*"
+          - Sid: LoadBalancersRead
+            Effect: Allow
+            Action: elasticloadbalancing:Describe*
+            Resource: "*"
+          - Sid: LoadBalancersLaunchpad
+            Effect: Allow
+            Action: elasticloadbalancing:*
+            Resource:
+              - !Sub "arn:\${AWS::Partition}:elasticloadbalancing:*:\${AWS::AccountId}:loadbalancer/app/lp-*/*"
+              - !Sub "arn:\${AWS::Partition}:elasticloadbalancing:*:\${AWS::AccountId}:targetgroup/lp-*/*"
+              - !Sub "arn:\${AWS::Partition}:elasticloadbalancing:*:\${AWS::AccountId}:listener/app/lp-*/*/*"
+              - !Sub "arn:\${AWS::Partition}:elasticloadbalancing:*:\${AWS::AccountId}:listener-rule/app/lp-*/*/*/*"
+          - Sid: LogsRead
+            Effect: Allow
+            Action: logs:DescribeLogGroups
+            Resource: "*"
+          - Sid: LogsLaunchpad
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:PutRetentionPolicy
+              - logs:DeleteRetentionPolicy
+              - logs:TagResource
+              - logs:UntagResource
+              - logs:TagLogGroup
+              - logs:ListTagsForResource
+              - logs:ListTagsLogGroup
+            Resource:
+              - !Sub "arn:\${AWS::Partition}:logs:*:\${AWS::AccountId}:log-group:/launchpad/*"
+              - !Sub "arn:\${AWS::Partition}:logs:*:\${AWS::AccountId}:log-group:/launchpad/*:*"
+          - Sid: TaskRoles
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:UpdateRole
+              - iam:UpdateRoleDescription
+              - iam:UpdateAssumeRolePolicy
+              - iam:TagRole
+              - iam:UntagRole
+              - iam:ListRoleTags
+              - iam:ListAttachedRolePolicies
+              - iam:ListRolePolicies
+              - iam:ListInstanceProfilesForRole
+              - iam:DetachRolePolicy
+            Resource: !Sub "arn:\${AWS::Partition}:iam::\${AWS::AccountId}:role/launchpad-*"
+          - Sid: AttachOnlyTaskExecutionPolicy
+            Effect: Allow
+            Action: iam:AttachRolePolicy
+            Resource: !Sub "arn:\${AWS::Partition}:iam::\${AWS::AccountId}:role/launchpad-*"
+            Condition:
+              ArnEquals:
+                iam:PolicyARN: !Sub "arn:\${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+          - Sid: PassRolesOnlyToEcsTasks
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub "arn:\${AWS::Partition}:iam::\${AWS::AccountId}:role/launchpad-*"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ecs-tasks.amazonaws.com
+          - Sid: ServiceLinkedRoles
+            # First use of ECS / load balancing in an account creates these.
+            Effect: Allow
+            Action: iam:CreateServiceLinkedRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:AWSServiceName:
+                  - ecs.amazonaws.com
+                  - elasticloadbalancing.amazonaws.com
 
 Outputs:
   RoleArn:
     Description: Role Launchpad assumes.
     Value: !GetAtt LaunchpadAccessRole.Arn
+  TemplateVersion:
+    Value: "${ACCESS_ROLE_TEMPLATE_VERSION}"
 `;

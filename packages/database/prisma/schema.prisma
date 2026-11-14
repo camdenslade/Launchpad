@@ -185,6 +185,9 @@ model Environment {
   cloudAccount   CloudAccount    @relation(fields: [cloudAccountId], references: [id], onDelete: Restrict)
   region         String
   approvalPolicy ApprovalPolicy  @default(any_member)
+  /// Developer-facing stack inputs (validated by ServiceSettingsSchema in
+  /// @launchpad/contracts). Applied only through plan -> approve -> apply.
+  serviceSettings Json           @default("{}")
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   runs           InfrastructureRun[]
@@ -208,11 +211,19 @@ enum InfrastructureRunStatus {
   failed
 }
 
+enum InfrastructureOperation {
+  /// Create/update infrastructure to match the stack.
+  apply
+  /// Tear down everything the stack created.
+  destroy
+}
+
 /// One plan -> approve -> apply cycle for an environment's infrastructure.
 model InfrastructureRun {
   id            String                  @id @default(uuid())
   environmentId String
   environment   Environment             @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  operation     InfrastructureOperation @default(apply)
   status        InfrastructureRunStatus @default(queued)
   /// { add, change, destroy, resources: [{ address, actions }] }
   summary       Json?

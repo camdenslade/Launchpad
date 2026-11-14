@@ -5,14 +5,17 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import type {
-  CreateEnvironment,
-  CurrentUser,
-  Environment as EnvironmentDto,
-  InfrastructureRun as RunDto,
-  InfrastructureRunDetail,
-  PlanSummary,
-  UpdateEnvironment
+import {
+  ServiceSettingsSchema,
+  type CreateEnvironment,
+  type CurrentUser,
+  type Environment as EnvironmentDto,
+  type InfrastructureOperation,
+  type InfrastructureRun as RunDto,
+  type InfrastructureRunDetail,
+  type PlanSummary,
+  type ServiceSettings,
+  type UpdateEnvironment
 } from "@launchpad/contracts";
 import {
   enqueueJob,
@@ -60,7 +63,27 @@ export class EnvironmentsService {
       },
       orderBy: { createdAt: "asc" }
     });
-    return environments.map((env) => toEnvironmentDto(env, env.runs[0] ?? null));
+    const provisioned = await this.provisionedIds(environments.map((e) => e.id));
+    return environments.map((env) => toEnvironmentDto(env, env.runs[0] ?? null, provisioned.has(env.id)));
+  }
+
+  /**
+   * An environment has live infrastructure when its most recent *applied*
+   * run created/updated it (rather than tearing it down).
+   */
+  private async provisionedIds(environmentIds: string[]): Promise<Set<string>> {
+    if (environmentIds.length === 0) return new Set();
+    const lastApplied = await this.db.infrastructureRun.findMany({
+      where: { environmentId: { in: environmentIds }, status: "applied" },
+      orderBy: { createdAt: "desc" },
+      distinct: ["environmentId"],
+      select: { environmentId: true, operation: true }
+    });
+    return new Set(lastApplied.filter((r) => r.operation === "apply").map((r) => r.environmentId));
+  }
+
+  private async isProvisioned(environmentId: string): Promise<boolean> {
+    return (await this.provisionedIds([environmentId])).has(environmentId);
   }
 
   async create(user: CurrentUser, projectId: string, input: CreateEnvironment): Promise<EnvironmentDto> {
@@ -96,7 +119,7 @@ export class EnvironmentsService {
         metadata: { projectId, name: env.name, kind: env.kind, slug: env.slug, cloudAccountId: account.id }
       });
 
-      return toEnvironmentDto(env, null);
+      return toEnvironmentDto(env, null, false);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException(`This project already has an environment named "${input.name}".`);
@@ -109,11 +132,14 @@ export class EnvironmentsService {
     const before = await this.findEnvironment(id);
     const env = await this.db.environment.update({
       where: { id },
-      data: { approvalPolicy: input.approvalPolicy },
+      data: {
+        ...(input.approvalPolicy ? { approvalPolicy: input.approvalPolicy } : {}),
+        ...(input.serviceSettings ? { serviceSettings: { ...input.serviceSettings } } : {})
+      },
       include: { cloudAccount: true, runs: { orderBy: { createdAt: "desc" }, take: 1, include: runInclude } }
     });
 
-    if (before.approvalPolicy !== env.approvalPolicy) {
+    if (input.approvalPolicy && before.approvalPolicy !== env.approvalPolicy) {
       await this.audit.record({
         actorId: user.id,
         action: "environment.approval_policy_changed",
@@ -122,17 +148,29 @@ export class EnvironmentsService {
         metadata: { from: before.approvalPolicy, to: env.approvalPolicy }
       });
     }
-    return toEnvironmentDto(env, env.runs[0] ?? null);
+    if (input.serviceSettings) {
+      // Settings only take effect through plan -> approve -> apply, but who
+      // changed what is still worth recording.
+      await this.audit.record({
+        actorId: user.id,
+        action: "environment.service_settings_changed",
+        targetType: "environment",
+        targetId: id,
+        metadata: { from: readServiceSettings(before.serviceSettings), to: input.serviceSettings }
+      });
+    }
+    return toEnvironmentDto(env, env.runs[0] ?? null, await this.isProvisioned(id));
   }
 
   async remove(user: CurrentUser, id: string): Promise<void> {
     const env = await this.findEnvironment(id);
-    const provisioned = await this.db.infrastructureRun.count({ where: { environmentId: id, status: "applied" } });
-    if (provisioned > 0) {
+    if (await this.isProvisioned(id)) {
       throw new ConflictException(
-        "This environment has provisioned infrastructure. Tear it down before deleting the environment (teardown is coming in the next release)."
+        "This environment still has infrastructure in your cloud account. Tear it down first, then delete it."
       );
     }
+    const busy = await this.db.infrastructureRun.findFirst({ where: { environmentId: id, status: { in: BUSY } } });
+    if (busy) throw new ConflictException(`A ${busy.status} run is in progress; wait for it to finish.`);
     await this.db.environment.delete({ where: { id } });
     await this.audit.record({
       actorId: user.id,
@@ -159,9 +197,15 @@ export class EnvironmentsService {
     return { ...toRunDto(run), planLog: run.planLog, applyLog: run.applyLog };
   }
 
-  /** Starts a plan. Fails if the environment already has work in flight. */
-  async plan(user: CurrentUser, environmentId: string): Promise<RunDto> {
+  /**
+   * Starts a plan (or a teardown plan with operation "destroy"). Fails if the
+   * environment already has work in flight.
+   */
+  async plan(user: CurrentUser, environmentId: string, operation: InfrastructureOperation): Promise<RunDto> {
     const env = await this.findEnvironment(environmentId);
+    if (operation === "destroy" && !(await this.isProvisioned(environmentId))) {
+      throw new ConflictException("There is no infrastructure to tear down for this environment.");
+    }
 
     const run = await this.db.$transaction(async (tx) => {
       const busy = await tx.infrastructureRun.findFirst({
@@ -172,7 +216,7 @@ export class EnvironmentsService {
       }
 
       const created = await tx.infrastructureRun.create({
-        data: { environmentId, requestedById: user.id },
+        data: { environmentId, operation, requestedById: user.id },
         include: runInclude
       });
       // Plans are safe to retry (they change nothing), so allow one retry.
@@ -182,10 +226,10 @@ export class EnvironmentsService {
 
     await this.audit.record({
       actorId: user.id,
-      action: "infrastructure.plan_requested",
+      action: operation === "destroy" ? "infrastructure.teardown_requested" : "infrastructure.plan_requested",
       targetType: "environment",
       targetId: env.id,
-      metadata: { runId: run.id }
+      metadata: { runId: run.id, operation }
     });
     return toRunDto(run);
   }
@@ -219,10 +263,10 @@ export class EnvironmentsService {
 
     await this.audit.record({
       actorId: user.id,
-      action: "infrastructure.plan_approved",
+      action: run.operation === "destroy" ? "infrastructure.teardown_approved" : "infrastructure.plan_approved",
       targetType: "environment",
       targetId: env.id,
-      metadata: { runId, summary: summaryCounts(run.summary) }
+      metadata: { runId, operation: run.operation, summary: summaryCounts(run.summary) }
     });
     return toRunDto(approved);
   }
@@ -278,6 +322,12 @@ function slugify(value: string): string {
   );
 }
 
+/** Stored settings with defaults filled in (older rows hold `{}`). */
+function readServiceSettings(stored: unknown): ServiceSettings {
+  const parsed = ServiceSettingsSchema.safeParse(stored ?? {});
+  return parsed.success ? parsed.data : ServiceSettingsSchema.parse({});
+}
+
 function summaryCounts(summary: unknown) {
   const s = summary as PlanSummary | null;
   return s ? { add: s.add, change: s.change, destroy: s.destroy } : null;
@@ -287,6 +337,7 @@ function toRunDto(run: RunRow): RunDto {
   return {
     id: run.id,
     environmentId: run.environmentId,
+    operation: run.operation,
     status: run.status,
     summary: (run.summary as PlanSummary | null) ?? null,
     outputs: (run.outputs as Record<string, unknown> | null) ?? null,
@@ -299,7 +350,11 @@ function toRunDto(run: RunRow): RunDto {
   };
 }
 
-function toEnvironmentDto(env: Environment & { cloudAccount: CloudAccount }, latestRun: RunRow | null): EnvironmentDto {
+function toEnvironmentDto(
+  env: Environment & { cloudAccount: CloudAccount },
+  latestRun: RunRow | null,
+  provisioned: boolean
+): EnvironmentDto {
   return {
     id: env.id,
     projectId: env.projectId,
@@ -314,6 +369,8 @@ function toEnvironmentDto(env: Environment & { cloudAccount: CloudAccount }, lat
       provider: env.cloudAccount.provider,
       accountId: env.cloudAccount.accountId
     },
+    provisioned,
+    serviceSettings: readServiceSettings(env.serviceSettings),
     latestRun: latestRun ? toRunDto(latestRun) : null,
     createdAt: env.createdAt.toISOString()
   };

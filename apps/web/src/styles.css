@@ -824,7 +824,7 @@ code {
   font-size: 0.85rem;
 }
 .env-card__decision p { margin: 0; }
-.env-card__empty { margin: 16px 0 0; font-size: 0.875rem; }
+
 .env-card__output { margin: 12px 0 0; font-size: 0.85rem; color: var(--text-secondary); }
 
 .kind-pill {
@@ -933,4 +933,28 @@ code {
 @media (max-width: 640px) {
   .env-card__decision { flex-direction: column; align-items: stretch; }
   .policy-select { margin-left: 0; }
+}
+
+/* Teardown */
+.button--destructive { color: #fff; background: #d64545; }
+.button--destructive:hover { background: #c03535; }
+.env-card__run--teardown .plan-review__resources { border-color: rgba(255, 107, 107, 0.25); }
+.env-card__empty { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
+.env-card__empty p { margin: 0; font-size: 0.875rem; }
+
+/* Service settings */
+.env-card__service { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.env-card__service-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 0.85rem; }
+.env-card__service-summary strong { margin-right: 6px; }
+.service-settings fieldset { border: 0; margin: 14px 0 0; padding: 0; min-width: 0; }
+.service-settings fieldset:disabled { opacity: 0.45; }
+.service-settings .form-actions { flex-wrap: wrap; }
+.service-settings__cost { margin: 0 auto 0 0; font-size: 0.8rem; color: var(--text-secondary); }
+.form-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.toggle { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; font-size: 0.875rem; }
+.toggle input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; }
+.toggle > span { display: flex; flex-direction: column; gap: 2px; }
+.link-button:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 640px) {
+  .form-grid--4 { grid-template-columns: 1fr 1fr; }
 }
